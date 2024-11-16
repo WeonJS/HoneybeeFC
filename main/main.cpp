@@ -4,6 +4,7 @@ extern "C" {
     #include "esp_system.h"
     #include "esp_log.h"
     #include "driver/uart.h"
+    #include "driver/ledc.h"
 }
 
 #include "honeybee_common_types.h"
@@ -23,13 +24,14 @@ extern "C" {
 
 extern "C" void app_main(void)
 {
-    elrs_receiver receiver = elrs_receiver(UART_NUM_1, 41, 42);
-    Servo servo = Servo(180);
+    elrs_receiver receiver = elrs_receiver(UART_NUM_0, 41, 42);
+    Servo servo = Servo(180, LEDC_CHANNEL_0);
+    servo.attach(5);
 
     while (1) {
         receiver.receive_from_buffer();
-        int angle = (receiver.get_rc_channel_data().chan0 - 900) / 5;
+        float roll = receiver.get_roll();
+        int angle = roll * (float)servo.get_max_angle();
         servo.write(angle);
-        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

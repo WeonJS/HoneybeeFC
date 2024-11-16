@@ -22,6 +22,16 @@ crsf_rc_channel_data elrs_receiver::get_rc_channel_data() {
     return this->rc_channel_data;
 }
 
+// method to normalize the channel value
+float elrs_receiver::normalize_channel(int value) {
+    return (float)(value - MIN_CHANNEL_VALUE) / (float)(MAX_CHANNEL_VALUE - MIN_CHANNEL_VALUE);
+}
+
+// method to get the roll value
+float elrs_receiver::get_roll() {
+    return normalize_channel((int) this->rc_channel_data.chan0);
+}
+
 // method to receive data from the buffer
 void elrs_receiver::receive_from_buffer() {
     // buffer to store received bytes
@@ -33,8 +43,6 @@ void elrs_receiver::receive_from_buffer() {
     // loop through the bytes received from the buffer
     for (int i = 0; i < byte_count; i++) {
         if (buf[i] == 0xC8) {
-            // get length (from type to crc8 inclusive)
-            uint8_t len = buf[i + 1];
 
             // get type of CRSF frame
             uint8_t type = buf[i + 2];
@@ -42,18 +50,9 @@ void elrs_receiver::receive_from_buffer() {
             // depending on the frame type, parse the payload
             switch (type) {
                 case (int) crsf_frame_type::rc_channels_packed:
-                    // create a struct to store the rc channel data
-                    crsf_rc_channel_data rc_channel_data;
 
                     // parse payload into rc channel data
                     rc_channel_data.chan0 = (buf[i + 4] << 8) | buf[i + 3];
-
-                    // ESP_LOGI(elrs_receiver_TAG, "Channel 0: %d", rc_channel_data.chan0);
-                    // printf("Payload bytes:\n");
-                    for (int j = 0; j < len; j++) {
-                        printf("%02X ", buf[i + 3 + j]);
-                    }
-                    printf("\n");
 
                     break;
             }

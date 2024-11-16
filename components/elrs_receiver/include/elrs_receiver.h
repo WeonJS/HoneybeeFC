@@ -46,10 +46,15 @@ enum elrs_receiver_state {
 
 class elrs_receiver : public uart_peripheral {
     public:
+        static const int MAX_CHANNEL_VALUE = 1811;
+        static const int MIN_CHANNEL_VALUE = 174;
         elrs_receiver(uart_port_t port, int rx_pin, int tx_pin);
         void set_state(elrs_receiver_state state);
         void receive_from_buffer();
         crsf_rc_channel_data get_rc_channel_data();
+
+        float get_roll();
+        static float normalize_channel(int value);
     private:
         elrs_receiver_state state;
         crsf_rc_channel_data rc_channel_data;
