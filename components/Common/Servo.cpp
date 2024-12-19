@@ -61,7 +61,7 @@ bool Servo::attach(int pin) {
         .duty       = 0,
         .hpoint     = 0
     };
-    ledc_channel_config(&ledc_channel);
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
 
     return true;
 }
@@ -78,14 +78,14 @@ bool Servo::write(int angle) {
 
     // calculate the pulse width in us and normalize it
     int pulse_width = angle_to_us(angle);
-    float pulse_width_normalized = normalize(pulse_width, MIN_PULSE_WIDTH_US, MAX_PULSE_WIDTH_US);
 
-    // calculate the duty cycle using normalized pulse width
-    int duty = pulse_width_normalized * (float)(1 << DUTY_RESOLUTION);
+    // period of the pwm signal in microseconds
+    int period = 1.0 / PWM_FREQUENCY * 1000000;
+    int duty = (float)pulse_width / (float)period * (1 << DUTY_RESOLUTION);
 
     // set the new duty cycle and update the LEDC channel
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, channel, duty);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, channel);
+    ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, channel, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, channel));
 
     // return successful write
     return true;
@@ -95,7 +95,7 @@ bool Servo::write(int angle) {
 bool Servo::write_us(int us) {
     this->angle = us_to_angle(us);
 
-    int pulse_width_normalized = normalize(us, MIN_PULSE_WIDTH_US, MAX_PULSE_WIDTH_US);
+    float pulse_width_normalized = normalize(us, MIN_PULSE_WIDTH_US, MAX_PULSE_WIDTH_US);
 
     // calculate the duty cycle using normalized pulse width
     int duty = pulse_width_normalized * (1 << DUTY_RESOLUTION);
@@ -127,6 +127,6 @@ void Servo::detach() {
     this->is_attached = false;
     this->pin = -1;
 
-    // set the channel config to null
-    ledc_channel_config(nullptr);
+    // stop the LEDC channel
+    ledc_stop(LEDC_LOW_SPEED_MODE, channel, 0);
 }
