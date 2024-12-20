@@ -4,8 +4,8 @@ extern "C" {
     #include "esp_log.h"
 }
 
-#include "honeybee_common_types.h"
-#include "Servo.h"
+#include "ELRSReceiver.h"
+#include "ThrustActuator.h"
 
 // The structure of a CRSF frame is as follows:
 //[sync] [len] [type] [payload] [crc8]
@@ -17,9 +17,44 @@ extern "C" {
 
 #define main_TAG "main"
 
+
 extern "C" void app_main(void)
 {
-    Servo servo = Servo(180, LEDC_CHANNEL_0);
-    servo.attach(5);
+    ESP_LOGI(main_TAG, "Starting main application");
+    Drone drone;
 
+    // Initialize the ELRS receiver
+    ELRSReceiver receiver;
+    UART_ConnectionConfig config 
+    {
+        .port = UART_NUM_1,
+        .rx_pin = 41,
+        .tx_pin = 42,
+        .rx_buf_size = 1024,
+        .tx_buf_size = 1024,
+    };
+    config.type = SerialConnectionType::UART;
+    receiver.data_config = config;
+    receiver.init();
+    drone.add_subsystem(&receiver);
+
+
+    // Thrust actuating subsystem
+    ThrustActuator actuator;
+    actuator.init();
+    actuator.attach_servo(ActuatorPosition::FORWARD_LEFT, 5);
+    actuator.attach_servo(ActuatorPosition::FORWARD_RIGHT, 6);
+    actuator.attach_servo(ActuatorPosition::BACK_LEFT, 7);
+    actuator.attach_servo(ActuatorPosition::BACK_RIGHT, 8);
+    drone.add_subsystem(&actuator);
+
+    drone.set_state(RUNNING);
+
+    while (drone.get_state() == RUNNING)
+    {
+        drone.update();
+    }
+    
+
+    
 }

@@ -16,6 +16,10 @@
     "idf.toolsPathWin": "c:\\Espressif\\frameworks\\esp-idf-v5.3.1\\tools",
     "files.associations": {
         "task.h": "c",
-        "esp_system.h": "c"
+        "esp_system.h": "c",
+        "*.tcc": "cpp",
+        "unordered_map": "cpp",
+        "numeric": "cpp",
+        "ostream": "cpp"
     }
 }

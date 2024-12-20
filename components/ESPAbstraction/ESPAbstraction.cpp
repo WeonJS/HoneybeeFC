@@ -10,7 +10,7 @@ extern "C" {
 #include "ESPAbstraction.h"
 
 namespace ESPAbstraction {
-    void uart_install_device(uart_port_t port, int rx_pin, int tx_pin, int tx_buf_size, int rx_buf_size, int baud_rate) 
+    void uart_install_connection(uart_port_t port, int rx_pin, int tx_pin, int tx_buf_size, int rx_buf_size, int baud_rate) 
     {
         // Initialize the UART peripheral config
         uart_config_t uart_config = {
@@ -30,9 +30,9 @@ namespace ESPAbstraction {
         ESP_ERROR_CHECK(uart_set_pin(port, tx_pin, rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     }
 
-    void uart_read_bytes(uart_port_t port, uint8_t* buf, int len) 
+    int read_bytes(uart_port_t port, uint8_t* buf, int len) 
     {
-        uart_read_bytes(port, buf, len, pdMS_TO_TICKS(20));
+        return uart_read_bytes(port, buf, len, pdMS_TO_TICKS(20));
     }
 }
 
