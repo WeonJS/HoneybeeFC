@@ -7,6 +7,9 @@ extern "C"
     #include "driver/ledc.h"
     #include "driver/rmt_tx.h"
     #include "driver/rmt_types.h"
+    #include "driver/i2c_master.h"
+    #include "driver/i2c_slave.h"
+    #include <cmath>
 }
 
 #include "ESPAbstraction.h"
@@ -34,6 +37,9 @@ extern "C"
 #define DSHOT_CLK_DIVIDER 8 // i guess this reduces the frequency to something that dshot can handle. need to look into this more.
 #define DSHOT_RESOLUTION_HZ 40000000 // 40MHz resolution, DSHot protocol needs a relative high resolution
 
+#define ICM20948_I2C_ADDR 0x68
+#define ICM20948_I2C_PWR_MGMT_REG_ADDR 0x06
+
 enum DroneState
 {
     RUNNING,
@@ -43,7 +49,7 @@ enum DroneState
 
 enum FlightMode {
     VTOL,
-    FIXED_WING,
+    FORWARD_FLIGHT,
 };
 
 enum SerialConnectionType
@@ -429,7 +435,7 @@ void update_rc_channels(UART_ConnectionConfig data_config)
     uint8_t data[rx_buf_size];
 
     int byte_count = ESPAbstraction::read_bytes(data_config.port, data, rx_buf_size);
-    
+    ESP_LOGI(main_TAG,"byte_count: %d", byte_count);
 
     for (int i = 0; i < byte_count; i++)
     {
@@ -703,17 +709,7 @@ bool DShotChannel::init(gpio_num_t gpio, dshot_mode_t dshot_mode, bool is_bidire
 
     ESP_LOGI(main_TAG, "Start ESC by sending zero throttle for a while...");
     ESP_ERROR_CHECK(rmt_transmit(esc_chan, dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-    vTaskDelay(pdMS_TO_TICKS(5000));
-
-    ESP_LOGI(main_TAG, "Increase throttle, no telemetry");
-
-    // send_throttle(200);
-
-    // ESP_ERROR_CHECK(rmt_transmit(esc_chan, dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-    // // the previous loop transfer is till undergoing, we need to stop it and restart,
-    // // so that the new throttle can be updated on the output
-    // ESP_ERROR_CHECK(rmt_disable(esc_chan));
-    // ESP_ERROR_CHECK(rmt_enable(esc_chan));
+    vTaskDelay(pdMS_TO_TICKS(3000));
 
     return true;
 }
@@ -785,32 +781,284 @@ uint16_t DShotChannel::serialize_packet(const dshot_packet_t &dshot_packet)
 }
 
 
-// Output using ESP32 RMT
-// void DShotChannel::send_packet(const dshot_packet_t &dshot_packet)
-// {
-//     uint16_t rmt_packet = serialize_packet(dshot_packet);
-//     ESP_LOGI(main_TAG, "Sending DShot packet: %s", std::bitset<16>(rmt_packet).to_string().c_str());
+i2c_master_bus_handle_t i2c_init_master_bus(gpio_num_t sda, gpio_num_t scl)
+{
+    i2c_master_bus_config_t esp_i2c_master_config = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = sda,
+        .scl_io_num = scl,
+        .clk_source = i2c_clock_source_t::I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .intr_priority = 0,
+        .flags = {
+            .enable_internal_pullup = false
+        }
+    };
 
-//     // send the main data
-//     rmt_transmit(dshot_rmt_channel, dshot_rmt_encoder, &dshot_packet, DSHOT_PACKET_LENGTH, &dshot_rmt_tx_config);
-//     ESP_ERROR_CHECK(rmt_tx_wait_all_done(dshot_rmt_channel, portMAX_DELAY));
+    i2c_master_bus_handle_t esp_i2c_master;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&esp_i2c_master_config, &esp_i2c_master));
 
-//     // send pause packet
-//     dshot_pause_packet_t pause_packet = {};
-//     rmt_transmit(dshot_rmt_channel, dshot_rmt_encoder, &pause_packet, sizeof(pause_packet), &dshot_rmt_tx_config);
-//     ESP_ERROR_CHECK(rmt_tx_wait_all_done(dshot_rmt_channel, portMAX_DELAY));
-//     vTaskDelay(pdMS_TO_TICKS(10));
+    return esp_i2c_master;
+    
+}
 
-// }
+void i2c_master_write(i2c_master_dev_handle_t device, uint8_t *data, size_t data_size, uint32_t wait_ms = -1)
+{
+    esp_err_t ret = i2c_master_transmit(device, data, data_size, wait_ms);
+    ESP_ERROR_CHECK(ret);
+}
+
+void i2c_master_read(i2c_master_dev_handle_t device, uint8_t *data, size_t data_size, uint32_t wait_ms = -1)
+{
+    esp_err_t ret = i2c_master_receive(device, data, data_size, wait_ms);
+    ESP_ERROR_CHECK(ret);
+}
+
+void i2c_master_write_read(i2c_master_dev_handle_t device, uint8_t *write_data, size_t write_data_size, uint8_t *read_data, size_t read_data_size, uint32_t wait_ms = -1)
+{
+    esp_err_t ret = i2c_master_transmit_receive(device, write_data, write_data_size, read_data, read_data_size, wait_ms);
+    ESP_ERROR_CHECK(ret);
+}
+
+void i2c_master_read_device_register(i2c_master_dev_handle_t device, uint8_t reg_addr, uint8_t *data, size_t data_size, uint32_t wait_ms = -1)
+{
+    i2c_master_write_read(device, &reg_addr, 1, data, data_size, wait_ms);
+}
+
+void i2c_master_write_device_register(i2c_master_dev_handle_t device, uint8_t reg_addr, uint8_t *data, size_t data_size, uint32_t wait_ms = -1)
+{
+    i2c_master_write(device, &reg_addr, 1, wait_ms); // todo: reg_addr might be 2 bytes because 10 bit addresses
+    i2c_master_write(device, data, data_size, wait_ms);
+}
+
+bool i2c_check_device_exists(i2c_master_bus_handle_t master_bus, uint8_t device_address, uint32_t wait_ms = -1)
+{
+    esp_err_t ret = i2c_master_probe(master_bus, device_address, wait_ms);
+    ESP_ERROR_CHECK(ret);
+    return ret == ESP_OK ? true : false;
+}
 
 
+i2c_master_dev_handle_t i2c_init_device(i2c_master_bus_handle_t master_bus, uint8_t device_address, i2c_addr_bit_len_t addr_len = I2C_ADDR_BIT_LEN_7, uint32_t speed_hz = 100000, uint32_t wait_us = 0)
+{
+    i2c_device_config_t i2c_device_config = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = device_address,
+        .scl_speed_hz = speed_hz,
+        .scl_wait_us = wait_us,
+    };
+
+    i2c_master_dev_handle_t i2c_device;
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(master_bus, &i2c_device_config, &i2c_device));
+
+    return i2c_device;
+}
 
 
+class ICM20948 {
+    public:
+        void init(gpio_num_t sda_pin, gpio_num_t scl_pin);
+        void update_axes();
+    private:
+        uint16_t gyro_x, gyro_y, gyro_z;
+        uint16_t mag_x, mag_y, mag_z;
+        i2c_master_bus_handle_t master;
+        i2c_master_dev_handle_t device;
+        const uint8_t I2C_ADDRESS = 0x68;
+        const uint8_t I2C_PWR_MGMT_REG_ADDR = 0x06;
+        const uint8_t I2C_GYRO_XOUT_H_REG_ADDR = 0x33;
+        const uint8_t I2C_GYRO_XOUT_L_REG_ADDR = 0x34;
+        const uint8_t I2C_GYRO_YOUT_H_REG_ADDR = 0x35;
+        const uint8_t I2C_GYRO_YOUT_L_REG_ADDR = 0x36;
+        const uint8_t I2C_GYRO_ZOUT_H_REG_ADDR = 0x37;
+        const uint8_t I2C_GYRO_ZOUT_L_REG_ADDR = 0x38;
+
+        const uint8_t I2C_MAG_XOUT_H_REG_ADDR = 0x12;
+        const uint8_t I2C_MAG_XOUT_L_REG_ADDR = 0x11;
+        const uint8_t I2C_MAG_YOUT_H_REG_ADDR = 0x14;
+        const uint8_t I2C_MAG_YOUT_L_REG_ADDR = 0x13;
+        const uint8_t I2C_MAG_ZOUT_H_REG_ADDR = 0x16;
+        const uint8_t I2C_MAG_ZOUT_L_REG_ADDR = 0x15;
 
 
+        void power_on();
+        void power_off();
+};
+
+void ICM20948::init(gpio_num_t sda_pin, gpio_num_t scl_pin)
+{
+    master = i2c_init_master_bus(sda_pin, scl_pin);
+    device = i2c_init_device(master, 0x68);
+
+    power_on();
+}
+
+void ICM20948::update_axes() {
+    // gyro
+    uint8_t gyro_x_h;
+    i2c_master_read_device_register(device, I2C_GYRO_XOUT_H_REG_ADDR, &gyro_x_h, 1);
+
+    uint8_t gyro_x_l;
+    i2c_master_read_device_register(device, I2C_GYRO_XOUT_L_REG_ADDR, &gyro_x_l, 1);
+
+    gyro_x = (gyro_x_h << 8) | gyro_x_l;
+
+    uint8_t gyro_y_h;
+    i2c_master_read_device_register(device, I2C_GYRO_YOUT_H_REG_ADDR, &gyro_y_h, 1);
+
+    uint8_t gyro_y_l;
+    i2c_master_read_device_register(device, I2C_GYRO_YOUT_L_REG_ADDR, &gyro_y_l, 1);
+
+    gyro_y = (gyro_y_h << 8) | gyro_y_l;
+
+    uint8_t gyro_z_h;
+    i2c_master_read_device_register(device, I2C_GYRO_ZOUT_H_REG_ADDR, &gyro_z_h, 1);
+
+    uint8_t gyro_z_l;
+    i2c_master_read_device_register(device, I2C_GYRO_ZOUT_L_REG_ADDR, &gyro_z_l, 1);
+
+    gyro_z = (gyro_z_h << 8) | gyro_z_l;
+
+    
+    // mag
+    uint8_t mag_x_h;
+    i2c_master_read_device_register(device, I2C_MAG_XOUT_H_REG_ADDR, &mag_x_h, 1);
+
+    uint8_t mag_x_l;
+    i2c_master_read_device_register(device, I2C_MAG_XOUT_L_REG_ADDR, &mag_x_l, 1);
+
+    mag_x = (mag_x_h << 8) | mag_x_l;
+
+    uint8_t mag_y_h;
+    i2c_master_read_device_register(device, I2C_MAG_YOUT_H_REG_ADDR, &mag_y_h, 1);
+
+    uint8_t mag_y_l;
+    i2c_master_read_device_register(device, I2C_MAG_YOUT_L_REG_ADDR, &mag_y_l, 1);
+
+    mag_y = (mag_y_h << 8) | mag_y_l;
+
+    uint8_t mag_z_h;
+    i2c_master_read_device_register(device, I2C_MAG_ZOUT_H_REG_ADDR, &mag_z_h, 1);
+
+    uint8_t mag_z_l;
+    i2c_master_read_device_register(device, I2C_MAG_ZOUT_L_REG_ADDR, &mag_z_l, 1);
+
+    mag_z = (mag_z_h << 8) | mag_z_l;
 
 
+    ESP_LOGI(main_TAG, "Gyro X: %d\tGyro Y: %d\tGyro Z: %d\tMag X: %d\tMag Y: %d\tMag Z: %d", gyro_x, gyro_y, gyro_z, mag_x, mag_y, mag_z);
 
+
+}
+
+void ICM20948::power_on()
+{
+// turn on the ICM
+    uint8_t data = 0x01;
+    i2c_master_write_device_register(device, I2C_PWR_MGMT_REG_ADDR, &data, 1);
+
+    // turn on mag
+    // uint8_t data_mag = 0x02;
+    // i2c_master_write_device_register(device, 0x31, &data_mag, 1);
+}
+
+void ICM20948::power_off()
+{
+    uint8_t data = 0x00;
+    i2c_master_write_device_register(device, I2C_PWR_MGMT_REG_ADDR, &data, 0);
+}
+
+class Vector2 {
+    public:
+        void set_x(float x);
+        void set_y(float y);
+        float get_x();
+        float get_y();
+        float dot(Vector2 other);
+        Vector2 normal();
+    private:
+        float x, y;
+};
+
+float Vector2::dot(Vector2 other)
+{
+    return this->x * other.get_x() + this->y * other.get_y();
+}
+
+Vector2 Vector2::normal()
+{
+    float magnitude = sqrt(this->x * this->x + this->y * this->y);
+    Vector2 ret;
+    ret.set_x(this->x / magnitude);
+    ret.set_y(this->y / magnitude);
+    return ret;
+}
+
+void Vector2::set_x(float x)
+{
+    this->x = x;
+}
+
+void Vector2::set_y(float y)
+{
+    this->y = y;
+}
+
+Vector2::Vector2()
+{
+    this->x = 0;
+    this->y = 0;
+}
+
+float Vector2::get_x()
+{
+    return this->x;
+}
+
+float Vector2::get_y()
+{
+    return this->y;
+}
+
+Vector2 operator+(Vector2 a, Vector2 b)
+{
+    Vector2 ret;
+    ret.set_x(a.get_x() + b.get_x());
+    ret.set_y(a.get_y() + b.get_y());
+    return ret;
+}
+
+Vector2 operator-(Vector2 a, Vector2 b)
+{
+    Vector2 ret;
+    ret.set_x(a.get_x() - b.get_x());
+    ret.set_y(a.get_y() - b.get_y());
+    return ret;
+}
+
+Vector2 operator*(Vector2 a, float b)
+{
+    Vector2 ret;
+    ret.set_x(a.get_x() * b);
+    ret.set_y(a.get_y() * b);
+    return ret;
+}
+
+Vector2 operator*(float a, Vector2 b)
+{
+    Vector2 ret;
+    ret.set_x(a * b.get_x());
+    ret.set_y(a * b.get_y());
+    return ret;
+}
+
+Vector2 operator/(Vector2 a, float b)
+{
+    Vector2 ret;
+    ret.set_x(a.get_x() / b);
+    ret.set_y(a.get_y() / b);
+    return ret;
+}
 
 int max_roll_offset_angle = 45;
 
@@ -847,33 +1095,44 @@ extern "C" void app_main(void)
     BR_servo.init(180);
     BR_servo.attach(7);
 
+    Servo CamTiltServo;
+    CamTiltServo.init(180);
+    CamTiltServo.attach(16);
+
+    Servo CamPanServo;
+    CamPanServo.init(180);
+    CamPanServo.attach(15);
+
     DShotChannel motor1; // bottom left, spin right
     DShotChannel motor2; // top left, spin left
     DShotChannel motor3; // bottom right, spin left
     DShotChannel motor4; // top right, spin right
-    // DShotChannel motor4;
     motor1.init(GPIO_NUM_47, DSHOT300, false);
-    // motor2.init(GPIO_NUM_21, DSHOT300, false);
-    // motor3.init(GPIO_NUM_14, DSHOT300, false);
-    // motor4.init(GPIO_NUM_13, DSHOT300, false);
+    motor2.init(GPIO_NUM_21, DSHOT300, false);
+    motor3.init(GPIO_NUM_14, DSHOT300, false);
+    motor4.init(GPIO_NUM_13, DSHOT300, false);
+    
+    ICM20948 icm;
+    icm.init(GPIO_NUM_6, GPIO_NUM_5);
 
 
     while (true)
     {
+
         // Update the rc channels
         update_rc_channels(elrs_uart_connection);
         int pitch = get_pitch() * 180;
         int roll = (get_roll() - 0.5f) * 2 * max_roll_offset_angle;
         int dshot_throttle = map(get_throttle(), 0, 1, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
 
-        // ESP_ERROR_CHECK(rmt_transmit(rmt_channel, rmt_encoder, packets, sizeof(packets), &tx_config));
-        // ESP_ERROR_CHECK(rmt_tx_wait_all_done(rmt_channel, portMAX_DELAY));
-        // vTaskDelay(pdMS_TO_TICKS(1));
+        icm.update_axes();
+
+        // ESP_LOGI(main_TAG, "Pitch: %d\tRoll: %d", channels.chan1, channels.chan0);
 
         motor1.send_throttle(dshot_throttle);
-        // motor2.send_throttle(dshot_throttle);
-        // motor3.send_throttle(dshot_throttle);
-        // motor4.send_throttle(dshot_throttle);
+        motor2.send_throttle(dshot_throttle);
+        motor3.send_throttle(dshot_throttle);
+        motor4.send_throttle(dshot_throttle);
 
 
 
@@ -890,7 +1149,7 @@ extern "C" void app_main(void)
                 BL_servo.set_can_rotate(false);
                 BR_servo.set_can_rotate(false);
                 break;
-            case FIXED_WING:
+            case FORWARD_FLIGHT:
                 FL_servo.set_can_rotate(true);
                 FR_servo.set_can_rotate(true);
                 BL_servo.set_can_rotate(true);
@@ -900,6 +1159,8 @@ extern "C" void app_main(void)
                 FR_servo.write(180 - pitch - roll);
                 BL_servo.write(90);
                 BR_servo.write(90);
+                CamTiltServo.write(get_roll() * 180);
+                CamPanServo.write(get_roll() * 180);
                 break;
             default:
                 break;
