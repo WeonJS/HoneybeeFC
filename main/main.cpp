@@ -66,7 +66,12 @@ int get_button_SA() {
     return (int) honeybee_math::map(channels.chan4, 191, 1792, 0, 1); // todo: ugly
 }
 
-
+enum icm20948_user_bank_t {
+    USER_BANK_0 = 0,
+    USER_BANK_1 = 1,
+    USER_BANK_2 = 2,
+    USER_BANK_3 = 3,
+};
 
 class ICM20948 {
     public:
@@ -78,7 +83,7 @@ class ICM20948 {
         i2c_master_bus_handle_t master;
         i2c_master_dev_handle_t device;
         const uint8_t I2C_ADDRESS = 0x68;
-        const uint8_t I2C_PWR_MGMT_REG_ADDR = 0x06;
+        const uint8_t ICM20948_I2C_PWR_MGMT_1_REG_ADDR = 0x06;
         const uint8_t I2C_GYRO_XOUT_H_REG_ADDR = 0x33;
         const uint8_t I2C_GYRO_XOUT_L_REG_ADDR = 0x34;
         const uint8_t I2C_GYRO_YOUT_H_REG_ADDR = 0x35;
@@ -93,73 +98,108 @@ class ICM20948 {
         const uint8_t I2C_MAG_ZOUT_H_REG_ADDR = 0x16;
         const uint8_t I2C_MAG_ZOUT_L_REG_ADDR = 0x15;
 
+        const uint8_t I2C_SLV0_ADDR = 0x03;
+        const uint8_t I2C_SLV0_REG = 0x04;
+        const uint8_t I2C_SLV0_CTRL = 0x05;
+        const uint8_t I2C_SLV0_DO = 0x06;
+
+        const uint8_t REG_BANK_SEL = 0x7F;
+
 
         void power_on();
         void power_off();
+        void write_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data);
+        void read_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data);
+        void set_user_bank(icm20948_user_bank_t bank);
 };
 
 void ICM20948::init(gpio_num_t sda_pin, gpio_num_t scl_pin)
 {
-    master = honeybee_i2c::i2c_init_master_bus(sda_pin, scl_pin);
-    device = honeybee_i2c::i2c_init_device(master, 0x68);
+    master = honeybee_i2c::i2c_init_master(sda_pin, scl_pin);
+    device = honeybee_i2c::i2c_init_dev(master, 0x68, I2C_ADDR_BIT_LEN_7, 100000);
 
     power_on();
+}
+
+
+void ICM20948::write_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data)
+{
+    set_user_bank(user_bank);
+
+    honeybee_i2c::i2c_master_write(device, &reg_addr, 1, -1);
+    honeybee_i2c::i2c_master_write(device, data, 1, -1);
+}
+
+void ICM20948::read_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data)
+{
+    set_user_bank(user_bank);
+
+    honeybee_i2c::i2c_master_write_read(device, &reg_addr, 1, data, 1, -1);
+}
+
+void ICM20948::set_user_bank(icm20948_user_bank_t user_bank)
+{
+    uint8_t user_bank_reg = REG_BANK_SEL;
+    honeybee_i2c::i2c_master_write(device, &user_bank_reg, 1, -1);
+
+    uint8_t data = user_bank;
+    honeybee_i2c::i2c_master_write(device, &data, 1, -1);
 }
 
 void ICM20948::update_axes() {
     // gyro
     uint8_t gyro_x_h;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_GYRO_XOUT_H_REG_ADDR, &gyro_x_h, 1);
+    read_reg(USER_BANK_0, I2C_GYRO_XOUT_H_REG_ADDR, &gyro_x_h);
 
     uint8_t gyro_x_l;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_GYRO_XOUT_L_REG_ADDR, &gyro_x_l, 1);
+    read_reg(USER_BANK_0, I2C_GYRO_XOUT_L_REG_ADDR, &gyro_x_l);
 
     gyro_x = (gyro_x_h << 8) | gyro_x_l;
 
     uint8_t gyro_y_h;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_GYRO_YOUT_H_REG_ADDR, &gyro_y_h, 1);
+    read_reg(USER_BANK_0, I2C_GYRO_YOUT_H_REG_ADDR, &gyro_y_h);
 
     uint8_t gyro_y_l;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_GYRO_YOUT_L_REG_ADDR, &gyro_y_l, 1);
+    read_reg(USER_BANK_0, I2C_GYRO_YOUT_L_REG_ADDR, &gyro_y_l);
 
     gyro_y = (gyro_y_h << 8) | gyro_y_l;
 
     uint8_t gyro_z_h;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_GYRO_ZOUT_H_REG_ADDR, &gyro_z_h, 1);
+    read_reg(USER_BANK_0, I2C_GYRO_ZOUT_H_REG_ADDR, &gyro_z_h);
 
     uint8_t gyro_z_l;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_GYRO_ZOUT_L_REG_ADDR, &gyro_z_l, 1);
+    read_reg(USER_BANK_0, I2C_GYRO_ZOUT_L_REG_ADDR, &gyro_z_l);
 
     gyro_z = (gyro_z_h << 8) | gyro_z_l;
 
     
     // mag
     uint8_t mag_x_h;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_MAG_XOUT_H_REG_ADDR, &mag_x_h, 1);
+    read_reg(USER_BANK_0, I2C_MAG_XOUT_H_REG_ADDR, &mag_x_h);
 
     uint8_t mag_x_l;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_MAG_XOUT_L_REG_ADDR, &mag_x_l, 1);
+    read_reg(USER_BANK_0, I2C_MAG_XOUT_L_REG_ADDR, &mag_x_l);
 
     mag_x = (mag_x_h << 8) | mag_x_l;
 
     uint8_t mag_y_h;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_MAG_YOUT_H_REG_ADDR, &mag_y_h, 1);
+    read_reg(USER_BANK_0, I2C_MAG_YOUT_H_REG_ADDR, &mag_y_h);
 
     uint8_t mag_y_l;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_MAG_YOUT_L_REG_ADDR, &mag_y_l, 1);
+    read_reg(USER_BANK_0, I2C_MAG_YOUT_L_REG_ADDR, &mag_y_l);
 
     mag_y = (mag_y_h << 8) | mag_y_l;
 
     uint8_t mag_z_h;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_MAG_ZOUT_H_REG_ADDR, &mag_z_h, 1);
+    read_reg(USER_BANK_0, I2C_MAG_ZOUT_H_REG_ADDR, &mag_z_h);
 
     uint8_t mag_z_l;
-    honeybee_i2c::i2c_master_read_device_register(device, I2C_MAG_ZOUT_L_REG_ADDR, &mag_z_l, 1);
+    read_reg(USER_BANK_0, I2C_MAG_ZOUT_L_REG_ADDR, &mag_z_l);
 
     mag_z = (mag_z_h << 8) | mag_z_l;
 
     // uint8_t data;
-    // honeybee_i2c::i2c_master_read_device_register(device, 0x06, &data, 1);
+    // honeybee_i2c::i2c_master_read_dev_reg(device, 0x06, &data, 1);
     // ESP_LOGI(main_TAG, "Data: %d", data);
 
     ESP_LOGI(main_TAG, "Gyro X: %d\tGyro Y: %d\tGyro Z: %d\tMag X: %d\tMag Y: %d\tMag Z: %d", gyro_x, gyro_y, gyro_z, mag_x, mag_y, mag_z);
@@ -167,12 +207,15 @@ void ICM20948::update_axes() {
 
 void ICM20948::power_on()
 {
+    // enable power management 1 register
     uint8_t data = 0x01;
-    honeybee_i2c::i2c_master_write_device_register(device, ICM20948_I2C_PWR_MGMT_REG_ADDR, &data, 1);
+    write_reg(USER_BANK_0, ICM20948_I2C_PWR_MGMT_1_REG_ADDR, &data);
 }
 
 void ICM20948::power_off()
 {
+    uint8_t data = 0x00;
+    write_reg(USER_BANK_0, ICM20948_I2C_PWR_MGMT_1_REG_ADDR, &data);
 }
 
 honeybee_math::Vector2 right_joystick_input;
@@ -185,37 +228,39 @@ extern "C" void app_main(void)
     // ESP_LOGI(main_TAG, "Starting main application");
 
     // Create an ELRS receiver
-    // honeybee_uart::uart_connection_config_t elrs_uart_connection;
-    // elrs_uart_connection.port = UART_NUM_1; // uart0 is used by the console
-    // elrs_uart_connection.rx_pin = 38;
-    // elrs_uart_connection.tx_pin = 37;
-    // elrs_uart_connection.rx_buf_size = 256;
-    // elrs_uart_connection.tx_buf_size = 256;
-    // honeybee_uart::uart_install_connection(elrs_uart_connection);
+    honeybee_uart::uart_connection_config_t elrs_uart_connection = {
+        .baud_rate = 420000,
+        .port = UART_NUM_1,
+        .rx_pin = 38,
+        .tx_pin = 37,
+        .rx_buf_size = 256,
+        .tx_buf_size = 256
+    };
+    honeybee_uart::uart_install_connection(elrs_uart_connection);
 
-    // honeybee_servo::servo_t FL_servo;
-    // FL_servo.init(180);
-    // FL_servo.attach(8);
+    honeybee_servo::servo_t FL_servo;
+    FL_servo.init(180);
+    FL_servo.attach(8);
 
-    // honeybee_servo::servo_t FR_servo;
-    // FR_servo.init(180);
-    // FR_servo.attach(18);
+    honeybee_servo::servo_t FR_servo;
+    FR_servo.init(180);
+    FR_servo.attach(18);
 
-    // honeybee_servo::servo_t BL_servo;
-    // BL_servo.init(180);
-    // BL_servo.attach(17);
+    honeybee_servo::servo_t BL_servo;
+    BL_servo.init(180);
+    BL_servo.attach(17);
 
-    // honeybee_servo::servo_t BR_servo;
-    // BR_servo.init(180);
-    // BR_servo.attach(7);
+    honeybee_servo::servo_t BR_servo;
+    BR_servo.init(180);
+    BR_servo.attach(7);
 
-    // honeybee_servo::servo_t CamTiltServo;
-    // CamTiltServo.init(180);
-    // CamTiltServo.attach(16);
+    honeybee_servo::servo_t CamTiltServo;
+    CamTiltServo.init(180);
+    CamTiltServo.attach(16);
 
-    // honeybee_servo::servo_t CamPanServo;
-    // CamPanServo.init(180);
-    // CamPanServo.attach(15);
+    honeybee_servo::servo_t CamPanServo;
+    CamPanServo.init(180);
+    CamPanServo.attach(15);
 
     // honeybee_dshot::dshot_connection_t motor_BL; // bottom left, spin right
     // honeybee_dshot::dshot_connection_t motor_TL; // top left, spin left
@@ -226,101 +271,64 @@ extern "C" void app_main(void)
     // motor_BR.init(GPIO_NUM_14, honeybee_dshot::DSHOT300, false);
     // motor_TR.init(GPIO_NUM_13, honeybee_dshot::DSHOT300, false);
     
-    // ICM20948 icm;
-    // icm.init(GPIO_NUM_6, GPIO_NUM_5);
-
-    i2c_master_bus_config_t master_config = {
-        .i2c_port = I2C_NUM_0,
-        .sda_io_num = GPIO_NUM_6,
-        .scl_io_num = GPIO_NUM_5,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .intr_priority = 0,
-        .flags = {
-            .enable_internal_pullup = false
-        }
-    };
-
-    i2c_master_bus_handle_t master;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&master_config, &master));
-
-    uint32_t wait = -1;
-    i2c_device_config_t i2c_device_config = {
-            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-            .device_address = 0x68,
-            .scl_speed_hz = 100000,
-            .scl_wait_us = wait,
-        };
-
-    i2c_master_dev_handle_t i2c_device;
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(master, &i2c_device_config, &i2c_device));
-
-    const uint8_t data = 0x06;
-    i2c_master_transmit(i2c_device, &data, 1, -1);
-    const uint8_t data2 = 0x01;
-    i2c_master_transmit(i2c_device, &data2, 1, -1);
-
-    // read power management register
-    uint8_t data_read;
-    i2c_master_transmit_receive(i2c_device, &data, 1, &data_read, 1, -1);
-    ESP_LOGI(main_TAG, "Data: %d", data_read);
-
+    ICM20948 icm;
+    icm.init(GPIO_NUM_6, GPIO_NUM_5);
 
     while (true)
     {
         // Update the rc channels
-        // honeybee_crsf::update_rc_channels(elrs_uart_connection, channels);
-        // int pitch = get_pitch() * 180;
-        // int roll = (get_roll() - 0.5f) * 2 * max_roll_offset_angle;
-        // int dshot_throttle = honeybee_math::map(get_throttle(), 0, 1, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
+        honeybee_crsf::update_rc_channels(elrs_uart_connection, channels);
+        int pitch = get_pitch() * 180;
+        int roll = (get_roll() - 0.5f) * 2 * max_roll_offset_angle;
+        int dshot_throttle = honeybee_math::map(get_throttle(), 0, 1, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
 
-        // right_joystick_input.set_x((get_roll() - 0.5f) * 2);
-        // right_joystick_input.set_y((get_pitch() - 0.5f) * 2);
-        // right_joystick_input = right_joystick_input.normal();
+        right_joystick_input.set_x((get_roll() - 0.5f) * 2);
+        right_joystick_input.set_y((get_pitch() - 0.5f) * 2);
+        right_joystick_input = right_joystick_input.normal();
 
-        // left_joystick_input.set_x((get_yaw() - 0.5f) * 2);
-        // left_joystick_input.set_y((get_throttle() - 0.5f) * 2);
-        // left_joystick_input = left_joystick_input.normal();
+        left_joystick_input.set_x((get_yaw() - 0.5f) * 2);
+        left_joystick_input.set_y((get_throttle() - 0.5f) * 2);
+        left_joystick_input = left_joystick_input.normal();
 
-        // icm.update_axes();
+        icm.update_axes();
+        // ESP_LOGI(main_TAG, "Pitch: %d\tRoll: %d", channels.chan1, channels.chan0);
 
-        // // ESP_LOGI(main_TAG, "Pitch: %d\tRoll: %d", channels.chan1, channels.chan0);
+        // ESP_LOGI(main_TAG, "Pitch: %d\tRoll: %d", channels.chan1, channels.chan0);
+        // motor_BL.send_throttle(dshot_throttle);
+        // motor_TL.send_throttle(dshot_throttle);
+        // motor_BR.send_throttle(dshot_throttle);
+        // motor_TR.send_throttle(dshot_throttle);
 
-        // // motor1.send_throttle(dshot_throttle);
-        // // motor2.send_throttle(dshot_throttle);
-        // // motor3.send_throttle(dshot_throttle);
-        // // motor4.send_throttle(dshot_throttle);
+        flight_mode_t mode = (flight_mode_t) get_button_SA();
+        switch (mode) {
+            case VTOL:
+                FL_servo.write(0);
+                FR_servo.write(180);
+                BL_servo.write(180);
+                BR_servo.write(0);
 
-        // flight_mode_t mode = (flight_mode_t) get_button_SA();
-        // switch (mode) {
-        //     case VTOL:
-        //         FL_servo.write(0);
-        //         FR_servo.write(180);
-        //         BL_servo.write(180);
-        //         BR_servo.write(0);
+                FL_servo.set_can_rotate(false);
+                FR_servo.set_can_rotate(false);
+                BL_servo.set_can_rotate(false);
+                BR_servo.set_can_rotate(false);
 
-        //         FL_servo.set_can_rotate(false);
-        //         FR_servo.set_can_rotate(false);
-        //         BL_servo.set_can_rotate(false);
-        //         BR_servo.set_can_rotate(false);
+                break;
+            case FORWARD_FLIGHT:
+                FL_servo.set_can_rotate(true);
+                FR_servo.set_can_rotate(true);
+                BL_servo.set_can_rotate(true);
+                BR_servo.set_can_rotate(true);
 
-        //         break;
-        //     case FORWARD_FLIGHT:
-        //         FL_servo.set_can_rotate(true);
-        //         FR_servo.set_can_rotate(true);
-        //         BL_servo.set_can_rotate(true);
-        //         BR_servo.set_can_rotate(true);
-
-        //         FL_servo.write(pitch - roll);
-        //         FR_servo.write(180 - pitch - roll);
-        //         BL_servo.write(90);
-        //         BR_servo.write(90);
-        //         CamTiltServo.write(get_roll() * 180);
-        //         CamPanServo.write(get_roll() * 180);
-        //         break;
-        //     default:
-        //         break;
-        // }
+                FL_servo.write(pitch - roll);
+                FR_servo.write(180 - pitch - roll);
+                BL_servo.write(90);
+                BR_servo.write(90);
+                CamTiltServo.write(get_roll() * 180);
+                CamPanServo.write(get_roll() * 180);
+                break;
+            default:
+                break;
+        }
         // ESP_LOGI(main_TAG, "Value: %d", value);
     }
 }
