@@ -80,7 +80,7 @@ namespace honeybee_dshot {
     {
         public:
 
-            bool init(gpio_num_t gpio_num, dshot_mode_t dshot_mode = DSHOT_OFF, bool is_bidirectional = false);
+            bool init(gpio_num_t gpio_num, dshot_mode_t dshot_mode = DSHOT_OFF, bool is_bidirectional = false, int startup_delay_ms = 3000);
 
             void send_throttle(uint16_t throttle_value);
 

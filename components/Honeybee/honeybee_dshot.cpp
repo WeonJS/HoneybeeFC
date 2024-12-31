@@ -144,7 +144,7 @@ namespace honeybee_dshot {
         return ESP_OK;
     }
 
-    bool dshot_connection_t::init(gpio_num_t gpio, dshot_mode_t dshot_mode, bool is_bidirectional)
+    bool dshot_connection_t::init(gpio_num_t gpio, dshot_mode_t dshot_mode, bool is_bidirectional, int startup_delay_ms)
     {
         ESP_LOGI(dshot_TAG, "Create RMT TX channel");
         esc_chan = NULL;
@@ -190,7 +190,7 @@ namespace honeybee_dshot {
 
         ESP_LOGI(dshot_TAG, "Start ESC by sending zero throttle for a while...");
         ESP_ERROR_CHECK(rmt_transmit(esc_chan, dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        vTaskDelay(pdMS_TO_TICKS(startup_delay_ms));
 
         return true;
     }

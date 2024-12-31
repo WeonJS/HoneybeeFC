@@ -27,6 +27,9 @@
         "string_view": "cpp",
         "span": "cpp",
         "cmath": "cpp",
-        "complex": "cpp"
+        "complex": "cpp",
+        "fstream": "cpp",
+        "istream": "cpp",
+        "sstream": "cpp"
     }
 }
