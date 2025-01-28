@@ -101,8 +101,7 @@ namespace honeybee_dshot {
             .duration0 = (uint16_t)(delay_ticks / 2),
             .level0 = 0,
             .duration1 = (uint16_t)(delay_ticks / 2),
-            .level1 = 0,
-            
+            .level1 = 0
         };
         dshot_encoder->dshot_delay_symbol = dshot_delay_symbol;
 
@@ -146,6 +145,7 @@ namespace honeybee_dshot {
 
     bool dshot_connection_t::init(gpio_num_t gpio, dshot_mode_t dshot_mode, bool is_bidirectional, int startup_delay_ms)
     {
+        #ifdef ESP32S3
         ESP_LOGI(dshot_TAG, "Create RMT TX channel");
         esc_chan = NULL;
         tx_chan_config = {
@@ -193,6 +193,8 @@ namespace honeybee_dshot {
         vTaskDelay(pdMS_TO_TICKS(startup_delay_ms));
 
         return true;
+
+        #endif
     }
 
     void dshot_connection_t::send_throttle(uint16_t throttle_value)

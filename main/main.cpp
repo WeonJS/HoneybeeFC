@@ -35,7 +35,7 @@ enum flight_mode_t {
 };
 
 
-honeybee_crsf::crsf_rc_channel_data_t channels;
+honeybee_crsf::hb_crsf_rc_channel_data_t channels;
 
 
 #define CRSF_RC_CHANNEL_MIN 174
@@ -73,50 +73,70 @@ enum icm20948_user_bank_t {
     USER_BANK_3 = 3,
 };
 
+enum icm20948_gyro_scale_t {
+    GYRO_SCALE_250DPS = 0,
+    GYRO_SCALE_500DPS = 1,
+    GYRO_SCALE_1000DPS = 2,
+    GYRO_SCALE_2000DPS = 3,
+};
+
+enum icm20948_accel_scale_t {
+    ACCEL_SCALE_2G = 0,
+    ACCEL_SCALE_4G = 1,
+    ACCEL_SCALE_8G = 2,
+    ACCEL_SCALE_16G = 3,
+};
+
 class ICM20948 {
     public:
         void init(gpio_num_t sda_pin, gpio_num_t scl_pin);
         void update_axes();
     private:
-        uint16_t gyro_x, gyro_y, gyro_z;
-        uint16_t mag_x, mag_y, mag_z;
+        double gyro_x_dps, gyro_y_dps, gyro_z_dps;
+        double accel_x_g, accel_y_g, accel_z_g;
+
         i2c_master_bus_handle_t master;
         i2c_master_dev_handle_t device;
-        const uint8_t I2C_ADDRESS = 0x68;
-        const uint8_t ICM20948_I2C_PWR_MGMT_1_REG_ADDR = 0x06;
-        const uint8_t I2C_GYRO_XOUT_H_REG_ADDR = 0x33;
-        const uint8_t I2C_GYRO_XOUT_L_REG_ADDR = 0x34;
-        const uint8_t I2C_GYRO_YOUT_H_REG_ADDR = 0x35;
-        const uint8_t I2C_GYRO_YOUT_L_REG_ADDR = 0x36;
-        const uint8_t I2C_GYRO_ZOUT_H_REG_ADDR = 0x37;
-        const uint8_t I2C_GYRO_ZOUT_L_REG_ADDR = 0x38;
+        static constexpr uint8_t I2C_ADDRESS = 0x68;
+        static constexpr uint8_t PWR_MGMT_1 = 0x06;
+        static constexpr uint8_t ACCEL_XOUT_H = 0x2D;
+        static constexpr uint8_t ACCEL_XOUT_L = 0x2E;
+        static constexpr uint8_t ACCEL_YOUT_H = 0x2F;
+        static constexpr uint8_t ACCEL_YOUT_L = 0x30;
+        static constexpr uint8_t ACCEL_ZOUT_H = 0x31;
+        static constexpr uint8_t ACCEL_ZOUT_L = 0x32;
+        static constexpr uint8_t GYRO_XOUT_H = 0x33;
+        static constexpr uint8_t GYRO_XOUT_L = 0x34;
+        static constexpr uint8_t GYRO_YOUT_H = 0x35;
+        static constexpr uint8_t GYRO_YOUT_L = 0x36;
+        static constexpr uint8_t GYRO_ZOUT_H = 0x37;
+        static constexpr uint8_t GYRO_ZOUT_L = 0x38;
+        static constexpr uint8_t REG_BANK_SEL = 0x7F;
 
-        const uint8_t I2C_MAG_XOUT_H_REG_ADDR = 0x12;
-        const uint8_t I2C_MAG_XOUT_L_REG_ADDR = 0x11;
-        const uint8_t I2C_MAG_YOUT_H_REG_ADDR = 0x14;
-        const uint8_t I2C_MAG_YOUT_L_REG_ADDR = 0x13;
-        const uint8_t I2C_MAG_ZOUT_H_REG_ADDR = 0x16;
-        const uint8_t I2C_MAG_ZOUT_L_REG_ADDR = 0x15;
-
-        const uint8_t I2C_SLV0_ADDR = 0x03;
-        const uint8_t I2C_SLV0_REG = 0x04;
-        const uint8_t I2C_SLV0_CTRL = 0x05;
-        const uint8_t I2C_SLV0_DO = 0x06;
-
-        const uint8_t REG_BANK_SEL = 0x7F;
-
+        static constexpr uint8_t GYRO_CONFIG_1 = 0x01;
+        static constexpr uint8_t ACCEL_CONFIG = 0x14;
+        static constexpr double GYRO_SCALE_FACTOR_2000DPS = 16.4;
+        static constexpr double ACCEL_SCALE_FACTOR_16G = 2048.0;
 
         void power_on();
         void power_off();
         void write_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data);
         void read_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data);
         void set_user_bank(icm20948_user_bank_t bank);
-};
+};;
 
 void ICM20948::init(gpio_num_t sda_pin, gpio_num_t scl_pin)
 {
     master = honeybee_i2c::i2c_init_master(sda_pin, scl_pin);
-    device = honeybee_i2c::i2c_init_dev(master, 0x68, I2C_ADDR_BIT_LEN_7, 100000);
+    device = honeybee_i2c::i2c_init_dev(master, 0x68, I2C_ADDR_BIT_LEN_7, 400000);
+
+    // enable 2000 DPS gyro.
+    uint8_t data = GYRO_SCALE_2000DPS;
+    write_reg(USER_BANK_2, GYRO_CONFIG_1, &data);
+
+    // enable 16g accel
+    data = ACCEL_SCALE_16G;
+    write_reg(USER_BANK_2, ACCEL_CONFIG, &data);
 
     power_on();
 }
@@ -143,79 +163,81 @@ void ICM20948::set_user_bank(icm20948_user_bank_t user_bank)
     honeybee_i2c::i2c_master_write(device, &user_bank_reg, 1, -1);
 
     uint8_t data = user_bank;
+    data <<= 4; // data goes into bits 5:4 (pg 76 icm datasheet)
     honeybee_i2c::i2c_master_write(device, &data, 1, -1);
 }
 
 void ICM20948::update_axes() {
     // gyro
-    uint8_t gyro_x_h;
-    read_reg(USER_BANK_0, I2C_GYRO_XOUT_H_REG_ADDR, &gyro_x_h);
+    uint8_t gyro_x_h, gyro_x_l;
+    read_reg(USER_BANK_0, GYRO_XOUT_H, &gyro_x_h);
+    read_reg(USER_BANK_0, GYRO_XOUT_L, &gyro_x_l);
+    uint16_t gyro_x = (gyro_x_h << 8) | gyro_x_l;
 
-    uint8_t gyro_x_l;
-    read_reg(USER_BANK_0, I2C_GYRO_XOUT_L_REG_ADDR, &gyro_x_l);
+    uint8_t gyro_y_h, gyro_y_l;
+    read_reg(USER_BANK_0, GYRO_YOUT_H, &gyro_y_h);
+    read_reg(USER_BANK_0, GYRO_YOUT_L, &gyro_y_l);
+    uint16_t gyro_y = (gyro_y_h << 8) | gyro_y_l;
 
-    gyro_x = (gyro_x_h << 8) | gyro_x_l;
+    uint8_t gyro_z_h, gyro_z_l;
+    read_reg(USER_BANK_0, GYRO_ZOUT_H, &gyro_z_h);
+    read_reg(USER_BANK_0, GYRO_ZOUT_L, &gyro_z_l);
+    uint16_t gyro_z = (gyro_z_h << 8) | gyro_z_l;
 
-    uint8_t gyro_y_h;
-    read_reg(USER_BANK_0, I2C_GYRO_YOUT_H_REG_ADDR, &gyro_y_h);
+    int16_t gyro_x_signed = (int16_t) gyro_x;
+    int16_t gyro_y_signed = (int16_t) gyro_y;
+    int16_t gyro_z_signed = (int16_t) gyro_z;
 
-    uint8_t gyro_y_l;
-    read_reg(USER_BANK_0, I2C_GYRO_YOUT_L_REG_ADDR, &gyro_y_l);
+    gyro_x_dps = (double) gyro_x_signed / GYRO_SCALE_FACTOR_2000DPS;
+    gyro_y_dps = (double) gyro_y_signed / GYRO_SCALE_FACTOR_2000DPS;
+    gyro_z_dps = (double) gyro_z_signed / GYRO_SCALE_FACTOR_2000DPS;
 
-    gyro_y = (gyro_y_h << 8) | gyro_y_l;
+    // accel
+    uint8_t accel_x_h, accel_x_l;
+    read_reg(USER_BANK_0, ACCEL_XOUT_H, &accel_x_h);
+    read_reg(USER_BANK_0, ACCEL_XOUT_L, &accel_x_l);
+    uint16_t accel_x = (accel_x_h << 8) | accel_x_l;
 
-    uint8_t gyro_z_h;
-    read_reg(USER_BANK_0, I2C_GYRO_ZOUT_H_REG_ADDR, &gyro_z_h);
+    uint8_t accel_y_h, accel_y_l;
+    read_reg(USER_BANK_0, ACCEL_YOUT_H, &accel_y_h);
+    read_reg(USER_BANK_0, ACCEL_YOUT_L, &accel_y_l);
+    uint16_t accel_y = (accel_y_h << 8) | accel_y_l;
 
-    uint8_t gyro_z_l;
-    read_reg(USER_BANK_0, I2C_GYRO_ZOUT_L_REG_ADDR, &gyro_z_l);
+    uint8_t accel_z_h, accel_z_l;
+    read_reg(USER_BANK_0, ACCEL_ZOUT_H, &accel_z_h);
+    read_reg(USER_BANK_0, ACCEL_ZOUT_L, &accel_z_l);
+    uint16_t accel_z = (accel_z_h << 8) | accel_z_l;
 
-    gyro_z = (gyro_z_h << 8) | gyro_z_l;
+    int16_t accel_x_signed = (int16_t) accel_x;
+    int16_t accel_y_signed = (int16_t) accel_y;
+    int16_t accel_z_signed = (int16_t) accel_z;
 
-    
-    // mag
-    uint8_t mag_x_h;
-    read_reg(USER_BANK_0, I2C_MAG_XOUT_H_REG_ADDR, &mag_x_h);
+    accel_x_g = (double) accel_x_signed / ACCEL_SCALE_FACTOR_16G; // assuming ACCEL_SCALE_16G
+    accel_y_g = (double) accel_y_signed / ACCEL_SCALE_FACTOR_16G;
+    accel_z_g = (double) accel_z_signed / ACCEL_SCALE_FACTOR_16G;
 
-    uint8_t mag_x_l;
-    read_reg(USER_BANK_0, I2C_MAG_XOUT_L_REG_ADDR, &mag_x_l);
-
-    mag_x = (mag_x_h << 8) | mag_x_l;
-
-    uint8_t mag_y_h;
-    read_reg(USER_BANK_0, I2C_MAG_YOUT_H_REG_ADDR, &mag_y_h);
-
-    uint8_t mag_y_l;
-    read_reg(USER_BANK_0, I2C_MAG_YOUT_L_REG_ADDR, &mag_y_l);
-
-    mag_y = (mag_y_h << 8) | mag_y_l;
-
-    uint8_t mag_z_h;
-    read_reg(USER_BANK_0, I2C_MAG_ZOUT_H_REG_ADDR, &mag_z_h);
-
-    uint8_t mag_z_l;
-    read_reg(USER_BANK_0, I2C_MAG_ZOUT_L_REG_ADDR, &mag_z_l);
-
-    mag_z = (mag_z_h << 8) | mag_z_l;
-
-    // uint8_t data;
-    // honeybee_i2c::i2c_master_read_dev_reg(device, 0x06, &data, 1);
-    // ESP_LOGI(main_TAG, "Data: %d", data);
-
-    ESP_LOGI(main_TAG, "Gyro X: %d\tGyro Y: %d\tGyro Z: %d\tMag X: %d\tMag Y: %d\tMag Z: %d", gyro_x, gyro_y, gyro_z, mag_x, mag_y, mag_z);
+    // ESP_LOGI(main_TAG, "---------------------------------------------");
+    // ESP_LOGI(main_TAG, "|   Axis   |   Gyro (DPS)   |   Accel (G)   |");
+    // ESP_LOGI(main_TAG, "---------------------------------------------");
+    // ESP_LOGI(main_TAG, "|    X     |    %.2f        |    %.2f       |", gyro_x_dps, accel_x_g);
+    // ESP_LOGI(main_TAG, "---------------------------------------------");
+    // ESP_LOGI(main_TAG, "|    Y     |    %.2f        |    %.2f       |", gyro_y_dps, accel_y_g);
+    // ESP_LOGI(main_TAG, "---------------------------------------------");
+    // ESP_LOGI(main_TAG, "|    Z     |    %.2f        |    %.2f       |", gyro_z_dps, accel_z_g);
+    // ESP_LOGI(main_TAG, "---------------------------------------------");
 }
 
 void ICM20948::power_on()
 {
     // enable power management 1 register
-    uint8_t data = 0x01;
-    write_reg(USER_BANK_0, ICM20948_I2C_PWR_MGMT_1_REG_ADDR, &data);
+    uint8_t temp_data = 0x01;
+    write_reg(USER_BANK_0, PWR_MGMT_1, &temp_data);
 }
 
 void ICM20948::power_off()
 {
     uint8_t data = 0x00;
-    write_reg(USER_BANK_0, ICM20948_I2C_PWR_MGMT_1_REG_ADDR, &data);
+    write_reg(USER_BANK_0, PWR_MGMT_1, &data);
 }
 
 honeybee_math::Vector2 right_joystick_input;
@@ -228,7 +250,7 @@ extern "C" void app_main(void)
     // ESP_LOGI(main_TAG, "Starting main application");
 
     // Create an ELRS receiver
-    honeybee_uart::uart_connection_config_t elrs_uart_connection = {
+    honeybee_uart::hb_uart_config_t elrs_uart_connection = {
         .baud_rate = 420000,
         .port = UART_NUM_1,
         .rx_pin = 38,

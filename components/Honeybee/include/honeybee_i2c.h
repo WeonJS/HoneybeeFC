@@ -7,9 +7,27 @@ extern "C" {
 }
 
 namespace honeybee_i2c {
-    struct i2c_connection_config_t
+    enum hb_i2c_port_t {
+        I2C_PORT_NONE,
+        I2C_PORT_0,
+        I2C_PORT_1,
+    };
+
+    struct hb_i2c_master_config_t
     {
-        i2c_port_t port;
+        #ifdef ESP32S3
+        hb_i2c_port_t port;
+        unsigned short address;
+        unsigned int sda_pin;
+        unsigned int scl_pin;
+        bool sda_pullup_en;
+        bool scl_pullup_en;
+        #endif
+    };
+
+    struct hb_i2c_slave_config_t {
+        hb_i2c_port_t port;
+        unsigned short address;
         unsigned int sda_pin;
         unsigned int scl_pin;
     };
@@ -24,6 +42,6 @@ namespace honeybee_i2c {
 
     bool i2c_check_dev_exists(i2c_master_bus_handle_t master_bus, uint8_t device_address, uint32_t wait_ms = -1);
 
-    i2c_master_dev_handle_t i2c_init_dev(i2c_master_bus_handle_t master_bus, uint8_t device_address, i2c_addr_bit_len_t addr_len = I2C_ADDR_BIT_LEN_7, uint32_t speed_hz = 100000, uint32_t wait_us = 0);
+    i2c_master_dev_handle_t i2c_init_dev(i2c_master_bus_handle_t master_bus, uint8_t device_address, i2c_addr_bit_len_t addr_len = I2C_ADDR_BIT_LEN_7, uint32_t speed_hz = 400000, uint32_t wait_us = 0);
     
 }

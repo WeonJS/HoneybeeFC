@@ -8,7 +8,7 @@ namespace honeybee_servo {
 
     int servo_count = 0;
 
-    honeybee_utils::honeybee_err_t servo_t::set_can_rotate(bool can_rotate)
+    honeybee_utils::hb_err_t servo_t::set_can_rotate(bool can_rotate)
     {
         this->can_rotate = can_rotate;
         return honeybee_utils::HONEYBEE_OK;

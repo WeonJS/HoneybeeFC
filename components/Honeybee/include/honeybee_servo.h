@@ -22,7 +22,7 @@ namespace honeybee_servo {
             int angle_to_us(int angle);
             int us_to_angle(int us);
             int get_max_angle();
-            honeybee_utils::honeybee_err_t set_can_rotate(bool can_rotate);
+            honeybee_utils::hb_err_t set_can_rotate(bool can_rotate);
         private:
             int pin = -1;
             int angle = 0;

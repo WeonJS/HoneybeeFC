@@ -1,7 +1,7 @@
 #include "honeybee_crsf.h"
 
 namespace honeybee_crsf {
-    honeybee_utils::honeybee_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, crsf_rc_channel_data_t &channels)
+    honeybee_utils::hb_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, hb_crsf_rc_channel_data_t &channels)
     {
 
         // print the data
@@ -24,7 +24,7 @@ namespace honeybee_crsf {
             return honeybee_utils::HONEYBEE_ERR;
 
         // third byte is the type of the frame
-        crsf_frame_type_t frame_type = (honeybee_crsf::crsf_frame_type_t)data[si + 2];
+        hb_crsf_frame_type_t frame_type = (honeybee_crsf::hb_crsf_frame_type_t)data[si + 2];
 
         // calculate the crc8 of the frame
         // uint8_t crc8 = data[si + frame_length + 1];
@@ -39,7 +39,7 @@ namespace honeybee_crsf {
         // process the frame based on the type
         switch (frame_type)
         {
-            case honeybee_crsf::crsf_frame_type_t::rc_channels_packed:
+            case honeybee_crsf::hb_crsf_frame_type_t::rc_channels_packed:
                 channels.chan0 = (data[si + 4] << 8) | data[si + 3]; // roll
                 channels.chan1 = (data[si + 5] << 5) | (data[si + 4] >> 3); // pitch
                 channels.chan2 = (data[si + 7] << 10) | data[si + 6] << 2 | data[si + 5] >> 6; // throttle
@@ -62,7 +62,7 @@ namespace honeybee_crsf {
         return honeybee_utils::HONEYBEE_OK;
     }
 
-    honeybee_utils::honeybee_err_t update_rc_channels(honeybee_uart::uart_connection_config_t uart_config, honeybee_crsf::crsf_rc_channel_data_t &channels)
+    honeybee_utils::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_config, honeybee_crsf::hb_crsf_rc_channel_data_t &channels)
     {
         unsigned int rx_buf_size = uart_config.rx_buf_size;
         uint8_t data[rx_buf_size];
@@ -72,7 +72,7 @@ namespace honeybee_crsf {
         for (int i = 0; i < byte_count; i++)
         {
             // attempt to process the frame and update the channels
-            honeybee_utils::honeybee_err_t ret = process_crsf_frame(data, rx_buf_size, i, channels);
+            honeybee_utils::hb_err_t ret = process_crsf_frame(data, rx_buf_size, i, channels);
 
             // if the frame was processed successfully, skip to the next frame
             if (ret == honeybee_utils::HONEYBEE_OK)

@@ -2,7 +2,7 @@
 #include "honeybee_uart.h"
 
 namespace honeybee_crsf {
-    struct crsf_rc_channel_data_t
+    struct hb_crsf_rc_channel_data_t
     {
         uint16_t chan0 : 11;
         uint16_t chan1 : 11;
@@ -22,7 +22,7 @@ namespace honeybee_crsf {
         uint16_t chan15 : 11;
     };
 
-    enum class crsf_frame_type_t : uint8_t
+    enum class hb_crsf_frame_type_t : uint8_t
     {
         gps = 0x02,
         battery_sensor = 0x08,
@@ -40,6 +40,6 @@ namespace honeybee_crsf {
         command = 0x32
     };
     
-    honeybee_utils::honeybee_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, crsf_rc_channel_data_t &channels);
-    honeybee_utils::honeybee_err_t update_rc_channels(honeybee_uart::uart_connection_config_t uart_cnctn, crsf_rc_channel_data_t &channels);
+    honeybee_utils::hb_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, hb_crsf_rc_channel_data_t &channels);
+    honeybee_utils::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_cnctn, hb_crsf_rc_channel_data_t &channels);
 }

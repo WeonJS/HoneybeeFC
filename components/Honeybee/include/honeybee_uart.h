@@ -5,7 +5,7 @@ extern "C" {
 }
 
 namespace honeybee_uart {
-    struct uart_connection_config_t
+    struct hb_uart_config_t
     {
         int baud_rate;
         uart_port_t port;
@@ -15,7 +15,7 @@ namespace honeybee_uart {
         unsigned int tx_buf_size;
     };
 
-    void uart_install_connection(uart_connection_config_t config);
+    void uart_install_connection(hb_uart_config_t config);
 
-    int read_bytes(uart_connection_config_t config, uint8_t* buf, int len);
+    int read_bytes(hb_uart_config_t config, uint8_t* buf, int len);
 }

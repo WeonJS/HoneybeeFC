@@ -1,7 +1,7 @@
 #include "honeybee_uart.h"
 
 namespace honeybee_uart {
-    void uart_install_connection(uart_connection_config_t config) //uart_port_t port, int rx_pin, int tx_pin, int tx_buf_size, int rx_buf_size, int baud_rate
+    void uart_install_connection(hb_uart_config_t config) //uart_port_t port, int rx_pin, int tx_pin, int tx_buf_size, int rx_buf_size, int baud_rate
     {
         // Initialize the UART peripheral config
         uart_config_t uart_config = {
@@ -21,7 +21,7 @@ namespace honeybee_uart {
         ESP_ERROR_CHECK(uart_set_pin(config.port, config.tx_pin, config.rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     }
 
-    int read_bytes(uart_connection_config_t config, uint8_t* buf, int len)
+    int read_bytes(hb_uart_config_t config, uint8_t* buf, int len)
     {
         return uart_read_bytes(config.port, buf, len, pdMS_TO_TICKS(20));
     }

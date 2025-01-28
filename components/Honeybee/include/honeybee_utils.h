@@ -2,14 +2,14 @@
 
 namespace honeybee_utils {
 
-    enum drone_state_t
+    enum hb_drone_state_t
     {
         RUNNING,
         STOPPED,
         NONE
     };
 
-    enum honeybee_err_t
+    enum hb_err_t
     {
         HONEYBEE_OK,
         HONEYBEE_ERR,
