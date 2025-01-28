@@ -1,25 +1,11 @@
 #include "honeybee_i2c.h"
 
 namespace honeybee_i2c {
-    i2c_master_bus_handle_t i2c_init_master(gpio_num_t sda, gpio_num_t scl)
+    honeybee_utils::hb_err_t i2c_init_master(hb_i2c_master_t *config)
     {
-        i2c_master_bus_config_t esp_i2c_master_config = {
-            .i2c_port = I2C_NUM_0,
-            .sda_io_num = sda,
-            .scl_io_num = scl,
-            .clk_source = i2c_clock_source_t::I2C_CLK_SRC_DEFAULT,
-            .glitch_ignore_cnt = 7,
-            .intr_priority = 0,
-            .trans_queue_depth = 0, // i2c is synchronous, so no need for a queue
-            .flags = {
-                .enable_internal_pullup = false
-            },
-        };
+        ESP_ERROR_CHECK(i2c_new_master_bus(&config->master_config, &config->master_device));
 
-        i2c_master_bus_handle_t esp_i2c_master;
-        ESP_ERROR_CHECK(i2c_new_master_bus(&esp_i2c_master_config, &esp_i2c_master));
-
-        return esp_i2c_master;
+        return honeybee_utils::HONEYBEE_OK;
         
     }
 

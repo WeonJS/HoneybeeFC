@@ -1,47 +1,58 @@
+#ifdef ESP32S3 || ESP32C3
 extern "C" {
     #include "driver/i2c_master.h"
+    #include <driver/i2c_slave.h>
     #include "driver/i2c_types.h"
     #include "driver/uart.h"
     #include "esp_log.h"
     #include "esp_err.h"
 }
 
-namespace honeybee_i2c {
-    enum hb_i2c_port_t {
-        I2C_PORT_NONE,
-        I2C_PORT_0,
-        I2C_PORT_1,
-    };
+#include "honeybee_utils.h"
 
-    struct hb_i2c_master_config_t
+#endif
+
+
+namespace honeybee_i2c {
+
+    struct hb_i2c_master_t
     {
-        #ifdef ESP32S3
-        hb_i2c_port_t port;
         unsigned short address;
         unsigned int sda_pin;
         unsigned int scl_pin;
-        bool sda_pullup_en;
-        bool scl_pullup_en;
+
+        #ifdef ESP32S3 || ESP32C3
+        i2c_master_bus_config_t master_config;
+        i2c_master_bus_handle_t master;
+        i2c_master_dev_handle_t master_device;
         #endif
     };
 
-    struct hb_i2c_slave_config_t {
-        hb_i2c_port_t port;
+    struct hb_i2c_slave_t {
         unsigned short address;
         unsigned int sda_pin;
         unsigned int scl_pin;
+
+        #ifdef ESP32S3 || ESP32C3
+        i2c_slave_config_t slave_config;
+        i2c_slave_dev_handle_t slave_device;
+        #endif
     };
 
-    i2c_master_bus_handle_t i2c_init_master(gpio_num_t sda, gpio_num_t scl);
+    struct hb_i2c_bus_dev_t {
 
-    void i2c_master_write(i2c_master_dev_handle_t device, uint8_t *data, size_t data_size, uint32_t wait_ms = -1);
+    };
 
-    void i2c_master_read(i2c_master_dev_handle_t device, uint8_t *data, size_t data_size, uint32_t wait_ms = -1);
+    honeybee_utils::hb_err_t i2c_init_master(hb_i2c_master_t *config);
 
-    void i2c_master_write_read(i2c_master_dev_handle_t device, uint8_t *write_data, size_t write_data_size, uint8_t *read_data, size_t read_data_size, uint32_t wait_ms = -1);
+    void i2c_master_write(hb_i2c_master_t *master, unsigned char *data, long unsigned int data_size, unsigned int wait_ms = -1);
 
-    bool i2c_check_dev_exists(i2c_master_bus_handle_t master_bus, uint8_t device_address, uint32_t wait_ms = -1);
+    void i2c_master_read(hb_i2c_master_t *master, unsigned char *data, long unsigned int data_size, unsigned int wait_ms = -1);
 
-    i2c_master_dev_handle_t i2c_init_dev(i2c_master_bus_handle_t master_bus, uint8_t device_address, i2c_addr_bit_len_t addr_len = I2C_ADDR_BIT_LEN_7, uint32_t speed_hz = 400000, uint32_t wait_us = 0);
+    void i2c_master_write_read(hb_i2c_master_t *master, unsigned char *write_data, long unsigned int write_data_size, unsigned char *read_data, long unsigned int read_data_size, unsigned int wait_ms = -1);
+
+    bool i2c_check_dev_exists(hb_i2c_master_t *master, unsigned char device_address, unsigned int wait_ms = -1);
+
+    honeybee_utils::hb_err_t i2c_init_dev(hb_i2c_master_t *master, hb_i2c_bus_dev_t *device, unsigned short device_address, unsigned char addr_bit_len = 7, unsigned int speed_hz = 400000, unsigned int wait_us = 0);
     
 }
