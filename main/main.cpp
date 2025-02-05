@@ -8,12 +8,7 @@ extern "C"
     #include <cmath>
 }
 
-#include "honeybee_uart.h"
-#include "honeybee_i2c.h"
-#include "honeybee_crsf.h"
-#include "honeybee_math.h"
-#include "honeybee_servo.h"
-#include "honeybee_dshot.h"
+#include "honeybee_esp32s3.h"
 
 
 // The structure of a CRSF frame is as follows:
@@ -28,6 +23,13 @@ extern "C"
 
 #define ICM20948_I2C_ADDR 0x68
 #define ICM20948_I2C_PWR_MGMT_REG_ADDR 0x06
+#define ICM20948_SDA_PIN 6
+#define ICM20948_SCL_PIN 5
+
+#define SERVO_FL_PIN 8
+#define SERVO_BL_PIN 18
+#define SERVO_FR_PIN 7
+#define SERVO_BR_PIN 17
 
 enum flight_mode_t {
     VTOL,
@@ -91,12 +93,14 @@ class ICM20948 {
     public:
         void init(gpio_num_t sda_pin, gpio_num_t scl_pin);
         void update_axes();
-    private:
+
         double gyro_x_dps, gyro_y_dps, gyro_z_dps;
         double accel_x_g, accel_y_g, accel_z_g;
+    private:
+        
 
-        i2c_master_bus_handle_t master;
-        i2c_master_dev_handle_t device;
+        honeybee_i2c::hb_i2c_master_cnctn_t master;
+        honeybee_i2c::hb_i2c_bus_dev_t device;
         static constexpr uint8_t I2C_ADDRESS = 0x68;
         static constexpr uint8_t PWR_MGMT_1 = 0x06;
         static constexpr uint8_t ACCEL_XOUT_H = 0x2D;
@@ -123,12 +127,21 @@ class ICM20948 {
         void write_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data);
         void read_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data);
         void set_user_bank(icm20948_user_bank_t bank);
-};;
+};
 
 void ICM20948::init(gpio_num_t sda_pin, gpio_num_t scl_pin)
 {
-    master = honeybee_i2c::i2c_init_master(sda_pin, scl_pin);
-    device = honeybee_i2c::i2c_init_dev(master, 0x68, I2C_ADDR_BIT_LEN_7, 400000);
+    master.scl_pin = ICM20948_SCL_PIN;
+    master.sda_pin = ICM20948_SDA_PIN;
+    honeybee_i2c::hb_i2c_init_master(&master);
+
+    device.addr = ICM20948_I2C_ADDR;
+    device.scl_speed_hz = 100000; // can't use high speed mode because 10kohm resistors
+    device.addr_len = honeybee_i2c::I2C_7_BIT_ADDR;
+
+    
+    honeybee_i2c::hb_i2c_init_dev(&master, &device, I2C_ADDR_BIT_LEN_7);
+    
 
     // enable 2000 DPS gyro.
     uint8_t data = GYRO_SCALE_2000DPS;
@@ -146,28 +159,32 @@ void ICM20948::write_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8
 {
     set_user_bank(user_bank);
 
-    honeybee_i2c::i2c_master_write(device, &reg_addr, 1, -1);
-    honeybee_i2c::i2c_master_write(device, data, 1, -1);
+    honeybee_i2c::hb_i2c_master_write(&device, &reg_addr, 1);
+    honeybee_i2c::hb_i2c_master_write(&device, data, 1);
 }
 
 void ICM20948::read_reg(icm20948_user_bank_t user_bank, uint8_t reg_addr, uint8_t* data)
 {
     set_user_bank(user_bank);
 
-    honeybee_i2c::i2c_master_write_read(device, &reg_addr, 1, data, 1, -1);
+    honeybee_i2c::hb_i2c_master_write_read(&device, &reg_addr, 1, data, 1);
 }
 
 void ICM20948::set_user_bank(icm20948_user_bank_t user_bank)
 {
     uint8_t user_bank_reg = REG_BANK_SEL;
-    honeybee_i2c::i2c_master_write(device, &user_bank_reg, 1, -1);
-
+    honeybee_i2c::hb_i2c_master_write(&device, &user_bank_reg, 1);
+    
     uint8_t data = user_bank;
     data <<= 4; // data goes into bits 5:4 (pg 76 icm datasheet)
-    honeybee_i2c::i2c_master_write(device, &data, 1, -1);
+    honeybee_i2c::hb_i2c_master_write(&device, &data, 1);
 }
 
 void ICM20948::update_axes() {
+    unsigned char power = 5;
+    honeybee_i2c::hb_i2c_master_read(&device, &power, 1);
+    ESP_LOGI(main_TAG, "power: %d", power);
+
     // gyro
     uint8_t gyro_x_h, gyro_x_l;
     read_reg(USER_BANK_0, GYRO_XOUT_H, &gyro_x_h);
@@ -184,6 +201,7 @@ void ICM20948::update_axes() {
     read_reg(USER_BANK_0, GYRO_ZOUT_L, &gyro_z_l);
     uint16_t gyro_z = (gyro_z_h << 8) | gyro_z_l;
 
+    ESP_LOGI(main_TAG, "gyro_x: %d", gyro_x);
     int16_t gyro_x_signed = (int16_t) gyro_x;
     int16_t gyro_y_signed = (int16_t) gyro_y;
     int16_t gyro_z_signed = (int16_t) gyro_z;
@@ -232,6 +250,8 @@ void ICM20948::power_on()
     // enable power management 1 register
     uint8_t temp_data = 0x01;
     write_reg(USER_BANK_0, PWR_MGMT_1, &temp_data);
+    read_reg(USER_BANK_0, PWR_MGMT_1, &temp_data);
+    ESP_LOGI(main_TAG, "PWR_MGMT_1: %02X", temp_data);
 }
 
 void ICM20948::power_off()
@@ -240,8 +260,8 @@ void ICM20948::power_off()
     write_reg(USER_BANK_0, PWR_MGMT_1, &data);
 }
 
-honeybee_math::Vector2 right_joystick_input;
-honeybee_math::Vector2 left_joystick_input;
+honeybee_math::hb_vector2_t right_joystick_input;
+honeybee_math::hb_vector2_t left_joystick_input;
 
 int max_roll_offset_angle = 45;
 
@@ -252,87 +272,86 @@ extern "C" void app_main(void)
     // Create an ELRS receiver
     honeybee_uart::hb_uart_config_t elrs_uart_connection = {
         .baud_rate = 420000,
-        .port = UART_NUM_1,
         .rx_pin = 38,
         .tx_pin = 37,
         .rx_buf_size = 256,
-        .tx_buf_size = 256
+        .tx_buf_size = 256,
+        .port = UART_NUM_1,
     };
     honeybee_uart::uart_install_connection(elrs_uart_connection);
 
-    honeybee_servo::servo_t FL_servo;
+    honeybee_utils::servo_t FL_servo;
     FL_servo.init(180);
-    FL_servo.attach(8);
+    FL_servo.attach(SERVO_FL_PIN);
 
-    honeybee_servo::servo_t FR_servo;
+    honeybee_utils::servo_t FR_servo;
     FR_servo.init(180);
-    FR_servo.attach(18);
+    FR_servo.attach(SERVO_FR_PIN);
 
-    honeybee_servo::servo_t BL_servo;
+    honeybee_utils::servo_t BL_servo;
     BL_servo.init(180);
-    BL_servo.attach(17);
+    BL_servo.attach(SERVO_BL_PIN);
 
-    honeybee_servo::servo_t BR_servo;
+    honeybee_utils::servo_t BR_servo;
     BR_servo.init(180);
-    BR_servo.attach(7);
+    BR_servo.attach(SERVO_BR_PIN);
 
-    honeybee_servo::servo_t CamTiltServo;
-    CamTiltServo.init(180);
-    CamTiltServo.attach(16);
+    // honeybee_utils::servo_t CamTiltServo;
+    // CamTiltServo.init(180);
+    // CamTiltServo.attach(16);
 
-    honeybee_servo::servo_t CamPanServo;
-    CamPanServo.init(180);
-    CamPanServo.attach(15);
+    // honeybee_utils::servo_t CamPanServo;
+    // CamPanServo.init(180);
+    // CamPanServo.attach(15);
 
-    // honeybee_dshot::dshot_connection_t motor_BL; // bottom left, spin right
-    // honeybee_dshot::dshot_connection_t motor_TL; // top left, spin left
-    // honeybee_dshot::dshot_connection_t motor_BR; // bottom right, spin left
-    // honeybee_dshot::dshot_connection_t motor_TR; // top right, spin right
-    // motor_BL.init(GPIO_NUM_47, honeybee_dshot::DSHOT300, false);
-    // motor_TL.init(GPIO_NUM_21, honeybee_dshot::DSHOT300, false);
-    // motor_BR.init(GPIO_NUM_14, honeybee_dshot::DSHOT300, false);
-    // motor_TR.init(GPIO_NUM_13, honeybee_dshot::DSHOT300, false);
+    honeybee_dshot::dshot_connection_t motor_BL; // bottom left, spin right
+    honeybee_dshot::dshot_connection_t motor_TL; // top left, spin left
+    honeybee_dshot::dshot_connection_t motor_BR; // bottom right, spin left
+    honeybee_dshot::dshot_connection_t motor_TR; // top right, spin right
+    motor_BL.init(GPIO_NUM_47, honeybee_dshot::DSHOT300, false);
+    motor_TL.init(GPIO_NUM_21, honeybee_dshot::DSHOT300, false);
+    motor_BR.init(GPIO_NUM_14, honeybee_dshot::DSHOT300, false);
+    motor_TR.init(GPIO_NUM_13, honeybee_dshot::DSHOT300, false);
     
     ICM20948 icm;
     icm.init(GPIO_NUM_6, GPIO_NUM_5);
 
     while (true)
     {
+
         // Update the rc channels
         honeybee_crsf::update_rc_channels(elrs_uart_connection, channels);
         int pitch = get_pitch() * 180;
         int roll = (get_roll() - 0.5f) * 2 * max_roll_offset_angle;
         int dshot_throttle = honeybee_math::map(get_throttle(), 0, 1, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
 
-        right_joystick_input.set_x((get_roll() - 0.5f) * 2);
-        right_joystick_input.set_y((get_pitch() - 0.5f) * 2);
-        right_joystick_input = right_joystick_input.normal();
-
-        left_joystick_input.set_x((get_yaw() - 0.5f) * 2);
-        left_joystick_input.set_y((get_throttle() - 0.5f) * 2);
-        left_joystick_input = left_joystick_input.normal();
-
         icm.update_axes();
-        // ESP_LOGI(main_TAG, "Pitch: %d\tRoll: %d", channels.chan1, channels.chan0);
+        ESP_LOGI(main_TAG, "Pitch: %f\tRoll: %f", icm.gyro_x_dps, icm.gyro_y_dps);
 
         // ESP_LOGI(main_TAG, "Pitch: %d\tRoll: %d", channels.chan1, channels.chan0);
-        // motor_BL.send_throttle(dshot_throttle);
-        // motor_TL.send_throttle(dshot_throttle);
-        // motor_BR.send_throttle(dshot_throttle);
-        // motor_TR.send_throttle(dshot_throttle);
+        
+        float dshot_throttle_FL = 0;
+        float dshot_throttle_FR = 0;
+        float dshot_throttle_BL = 0;
+        float dshot_throttle_BR = 0;
 
         flight_mode_t mode = (flight_mode_t) get_button_SA();
         switch (mode) {
             case VTOL:
-                FL_servo.write(0);
+                FL_servo.write(180);
                 FR_servo.write(180);
                 BL_servo.write(180);
-                BR_servo.write(0);
+                BR_servo.write(180);
 
                 FL_servo.set_can_rotate(false);
                 FR_servo.set_can_rotate(false);
                 BL_servo.set_can_rotate(false);
                 BR_servo.set_can_rotate(false);
+
+                motor_BL.send_throttle(dshot_throttle);
+                motor_TL.send_throttle(dshot_throttle);
+                motor_BR.send_throttle(dshot_throttle);
+                motor_TR.send_throttle(dshot_throttle);
 
                 break;
             case FORWARD_FLIGHT:
@@ -345,8 +364,13 @@ extern "C" void app_main(void)
                 FR_servo.write(180 - pitch - roll);
                 BL_servo.write(90);
                 BR_servo.write(90);
-                CamTiltServo.write(get_roll() * 180);
-                CamPanServo.write(get_roll() * 180);
+                // CamTiltServo.write(get_roll() * 180);
+                // CamPanServo.write(get_roll() * 180);
+
+                motor_BL.send_throttle(0);
+                motor_TL.send_throttle(dshot_throttle);
+                motor_BR.send_throttle(0);
+                motor_TR.send_throttle(dshot_throttle);
                 break;
             default:
                 break;
