@@ -25,9 +25,7 @@ extern "C" {
 #define dshot_TAG "DShot"
 
 
-
-namespace honeybee_utils {
-
+namespace honeybee {
     enum hb_drone_state_t
     {
         DRONE_STATE_RUNNING,
@@ -42,9 +40,11 @@ namespace honeybee_utils {
         HONEYBEE_INVALID_CRC
     };
 
-    class PID {
+    extern hb_drone_state_t drone_state;
+
+    class hb_pid {
         public:
-            PID(double Kp, double Ki, double Kd);
+            hb_pid(double Kp, double Ki, double Kd);
 
             void setTunings(double Kp, double Ki, double Kd);
             void setOutputLimits(double min, double max);
@@ -71,7 +71,7 @@ namespace honeybee_utils {
             unsigned long _lastTime;
     };
 
-    class servo_t
+    class hb_servo_t
     {
         public:
             ledc_timer_bit_t resolution;
@@ -87,7 +87,7 @@ namespace honeybee_utils {
             int angle_to_us(int angle);
             int us_to_angle(int us);
             int get_max_angle();
-            honeybee_utils::hb_err_t set_can_rotate(bool can_rotate);
+            honeybee::hb_err_t set_can_rotate(bool can_rotate);
         private:
             int pin = -1;
             int angle = 0;
@@ -97,10 +97,23 @@ namespace honeybee_utils {
             const static int MIN_PULSE_WIDTH_US = 500;
             const static int MAX_PULSE_WIDTH_US = 2500;
             bool can_rotate = true;
+            static int servo_count;
+    };
+
+    class hb_complementary_fltr_t
+    {
+        public:
+        private:
     };
 }
 
+namespace honeybee_utils {
+    
+}
+
 namespace honeybee_i2c {
+
+    
 
     // The address length of a device.
     typedef enum hb_i2c_address_len_e {
@@ -153,7 +166,10 @@ namespace honeybee_i2c {
         i2c_master_dev_handle_t device;
     } hb_i2c_bus_dev_t;
 
-    honeybee_utils::hb_err_t hb_i2c_init_master(hb_i2c_master_cnctn_t *config);
+    extern int num_i2c_connections;
+    extern hb_i2c_cnctn_t i2c_connections[MAX_I2C_CONNECTIONS];
+
+    honeybee::hb_err_t hb_i2c_init_master(hb_i2c_master_cnctn_t *config);
 
     void hb_i2c_master_write(hb_i2c_bus_dev_t *device, unsigned char *data, long unsigned int data_size, int wait_ms = -1);
 
@@ -163,11 +179,13 @@ namespace honeybee_i2c {
 
     bool hb_i2c_check_dev_exists(hb_i2c_master_cnctn_t *master, unsigned short device_address, int wait_ms = -1);
 
-    honeybee_utils::hb_err_t hb_i2c_init_dev(hb_i2c_master_cnctn_t *master, hb_i2c_bus_dev_t *device, long unsigned int wait_us = 0);
+    honeybee::hb_err_t hb_i2c_init_dev(hb_i2c_master_cnctn_t *master, hb_i2c_bus_dev_t *device, long unsigned int wait_us = 0);
     
 }
 
 namespace honeybee_uart {
+    
+
     struct hb_uart_config_t
     {
         int baud_rate;
@@ -178,6 +196,9 @@ namespace honeybee_uart {
 
         uart_port_t port;
     };
+
+    extern int num_uart_connections;
+    extern hb_uart_config_t uart_connections[MAX_UART_CONNECTIONS];
 
     void uart_install_connection(hb_uart_config_t config);
 
@@ -269,7 +290,7 @@ namespace honeybee_dshot {
     } dshot_esc_frame_t;
 
     // Represents a single DShot channel.
-    class dshot_connection_t
+    class dshot_cnctn_t
     {
         public:
 
@@ -280,7 +301,7 @@ namespace honeybee_dshot {
             void remove();
 
         private:
-            int dshot_connection_ts = 0;
+            int dshot_cnctn_ts = 0;
             rmt_channel_handle_t esc_chan;
             rmt_tx_channel_config_t tx_chan_config;
             rmt_encoder_handle_t rmt_encoder;
@@ -341,16 +362,6 @@ namespace honeybee_crsf {
         command = 0x32
     };
     
-    honeybee_utils::hb_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, hb_crsf_rc_channel_data_t &channels);
-    honeybee_utils::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_cnctn, hb_crsf_rc_channel_data_t &channels);
-}
-
-namespace honeybee {
-    extern int num_i2c_connections;
-    extern int num_uart_connections;
-    extern int servo_count;
-
-    extern honeybee_utils::hb_drone_state_t drone_state;
-    extern honeybee_i2c::hb_i2c_cnctn_t i2c_connections[MAX_I2C_CONNECTIONS];
-    extern honeybee_uart::hb_uart_config_t uart_connections[MAX_UART_CONNECTIONS];
+    honeybee::hb_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, hb_crsf_rc_channel_data_t &channels);
+    honeybee::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_cnctn, hb_crsf_rc_channel_data_t &channels);
 }

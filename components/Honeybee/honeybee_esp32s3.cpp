@@ -7,12 +7,15 @@ extern "C" {
 #include "honeybee_esp32s3.h"
 
 namespace honeybee_i2c {
+    int num_i2c_connections = 0;
+    hb_i2c_cnctn_t i2c_connections[MAX_I2C_CONNECTIONS];
+
     // Initialize the master bus and add it to our list of i2c connections.
-    honeybee_utils::hb_err_t hb_i2c_init_master(hb_i2c_master_cnctn_t *master)
+    honeybee::hb_err_t hb_i2c_init_master(hb_i2c_master_cnctn_t *master)
     {
         // Create ESP32 config for the master bus.
         i2c_master_bus_config_t master_config = {
-            .i2c_port = (i2c_port_num_t)honeybee::num_i2c_connections,
+            .i2c_port = (i2c_port_num_t)num_i2c_connections,
             .sda_io_num = (gpio_num_t)master->sda_pin,
             .scl_io_num = (gpio_num_t)master->scl_pin,
             .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -23,10 +26,11 @@ namespace honeybee_i2c {
         ESP_ERROR_CHECK(i2c_new_master_bus(&master_config, &master->master_handle));
 
         // Add this master to the list of i2c connections.
-        honeybee::i2c_connections[honeybee::num_i2c_connections].type = honeybee_i2c::I2C_MASTER;
-        honeybee::i2c_connections[honeybee::num_i2c_connections].master = *master;
+        i2c_connections[num_i2c_connections].type = I2C_MASTER;
+        i2c_connections[num_i2c_connections].master = *master;
+        num_i2c_connections++;
 
-        return honeybee_utils::HONEYBEE_OK;
+        return honeybee::HONEYBEE_OK;
     }
 
     // Write data to a device on our master bus.
@@ -62,7 +66,7 @@ namespace honeybee_i2c {
     }
 
 
-    honeybee_utils::hb_err_t hb_i2c_init_dev(hb_i2c_master_cnctn_t *master, hb_i2c_bus_dev_t *device, long unsigned int wait_us)
+    honeybee::hb_err_t hb_i2c_init_dev(hb_i2c_master_cnctn_t *master, hb_i2c_bus_dev_t *device, long unsigned int wait_us)
     {
         i2c_device_config_t i2c_device_config = {
             .dev_addr_length = device->addr_len == I2C_7_BIT_ADDR ? I2C_ADDR_BIT_LEN_7 : I2C_ADDR_BIT_LEN_10,
@@ -76,11 +80,14 @@ namespace honeybee_i2c {
         
         ESP_ERROR_CHECK(i2c_master_bus_add_device(master->master_handle, &i2c_device_config, &device->device));
 
-        return honeybee_utils::HONEYBEE_OK;
+        return honeybee::HONEYBEE_OK;
     }
 }
 
 namespace honeybee_uart {
+    int num_uart_connections = 0;
+    honeybee_uart::hb_uart_config_t uart_connections[MAX_UART_CONNECTIONS];
+
     void uart_install_connection(hb_uart_config_t config) //uart_port_t port, int rx_pin, int tx_pin, int tx_buf_size, int rx_buf_size, int baud_rate
     {
         // Initialize the UART peripheral config
@@ -204,11 +211,6 @@ namespace honeybee_math {
         ret.set_y(this->y / magnitude);
         return ret;
     }
-}
-
-namespace honeybee_servo {
-
-    
 }
 
 namespace honeybee_dshot {
@@ -349,7 +351,7 @@ namespace honeybee_dshot {
         return ESP_OK;
     }
 
-    bool dshot_connection_t::init(gpio_num_t gpio, dshot_mode_t dshot_mode, bool is_bidirectional, int startup_delay_ms)
+    bool dshot_cnctn_t::init(gpio_num_t gpio, dshot_mode_t dshot_mode, bool is_bidirectional, int startup_delay_ms)
     {
         ESP_LOGI(dshot_TAG, "Create RMT TX channel");
         esc_chan = NULL;
@@ -393,15 +395,15 @@ namespace honeybee_dshot {
             .telemetry_req = false, // telemetry is not supported in this example
         };
 
-        ESP_LOGI(dshot_TAG, "Start ESC by sending zero throttle for a while...");
-        ESP_ERROR_CHECK(rmt_transmit(esc_chan, dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-        vTaskDelay(pdMS_TO_TICKS(startup_delay_ms));
+        // ESP_LOGI(dshot_TAG, "Start ESC by sending zero throttle for a while...");
+        // ESP_ERROR_CHECK(rmt_transmit(esc_chan, dshot_encoder, &throttle, sizeof(throttle), &tx_config));
+        // vTaskDelay(pdMS_TO_TICKS(startup_delay_ms));
 
         return true;
 
     }
 
-    void dshot_connection_t::send_throttle(uint16_t throttle_value)
+    void dshot_cnctn_t::send_throttle(uint16_t throttle_value)
     {
         throttle_value = (uint16_t) honeybee_math::clamp(throttle_value, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
 
@@ -418,7 +420,7 @@ namespace honeybee_dshot {
 
     }
 
-    uint16_t dshot_connection_t::serialize_packet(const dshot_packet_t &dshot_packet)
+    uint16_t dshot_cnctn_t::serialize_packet(const dshot_packet_t &dshot_packet)
     {
         uint16_t parsedRmtPaket = DSHOT_NULL_PACKET;
         uint16_t crc = calculateCRC(dshot_packet);
@@ -432,7 +434,7 @@ namespace honeybee_dshot {
 }
 
 namespace honeybee_crsf {
-    honeybee_utils::hb_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, hb_crsf_rc_channel_data_t &channels)
+    honeybee::hb_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, hb_crsf_rc_channel_data_t &channels)
     {
 
         // print the data
@@ -445,14 +447,14 @@ namespace honeybee_crsf {
 
         // if the sync byte is not correct, return false
         if (sync != 0xC8)
-            return honeybee_utils::HONEYBEE_ERR;
+            return honeybee::HONEYBEE_ERR;
 
         // second byte is the length of the frame from [type] to [crc8] inclusive
         uint8_t frame_length = data[si + 1];
 
         // if there is not enough data to process the frame, return false
         if (si + frame_length >= buf_size)
-            return honeybee_utils::HONEYBEE_ERR;
+            return honeybee::HONEYBEE_ERR;
 
         // third byte is the type of the frame
         hb_crsf_frame_type_t frame_type = (honeybee_crsf::hb_crsf_frame_type_t)data[si + 2];
@@ -487,13 +489,13 @@ namespace honeybee_crsf {
 
                 break;
             default:
-                return honeybee_utils::HONEYBEE_ERR;
+                return honeybee::HONEYBEE_ERR;
         }
 
-        return honeybee_utils::HONEYBEE_OK;
+        return honeybee::HONEYBEE_OK;
     }
 
-    honeybee_utils::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_config, honeybee_crsf::hb_crsf_rc_channel_data_t &channels)
+    honeybee::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_config, honeybee_crsf::hb_crsf_rc_channel_data_t &channels)
     {
         unsigned int rx_buf_size = uart_config.rx_buf_size;
         uint8_t data[rx_buf_size];
@@ -503,10 +505,10 @@ namespace honeybee_crsf {
         for (int i = 0; i < byte_count; i++)
         {
             // attempt to process the frame and update the channels
-            honeybee_utils::hb_err_t ret = process_crsf_frame(data, rx_buf_size, i, channels);
+            honeybee::hb_err_t ret = process_crsf_frame(data, rx_buf_size, i, channels);
 
             // if the frame was processed successfully, skip to the next frame
-            if (ret == honeybee_utils::HONEYBEE_OK)
+            if (ret == honeybee::HONEYBEE_OK)
             {
                 int frame_length = data[i + 1] + 2; // entire frame length including sync and length bytes
                 i += frame_length;
@@ -518,19 +520,26 @@ namespace honeybee_crsf {
             }
         }
 
-        return honeybee_utils::HONEYBEE_OK;
+        return honeybee::HONEYBEE_OK;
     }
 }
 
 namespace honeybee_utils {
-    honeybee_utils::hb_err_t servo_t::set_can_rotate(bool can_rotate)
+    
+}
+
+namespace honeybee {
+    honeybee::hb_drone_state_t drone_state = honeybee::DRONE_STATE_NONE;
+    int hb_servo_t::servo_count = 0;
+    
+    honeybee::hb_err_t hb_servo_t::set_can_rotate(bool can_rotate)
     {
         this->can_rotate = can_rotate;
-        return honeybee_utils::HONEYBEE_OK;
+        return honeybee::HONEYBEE_OK;
     }
 
     // given a pulse width in us, calculate the angle in degrees
-    int servo_t::us_to_angle(int us)
+    int hb_servo_t::us_to_angle(int us)
     {
         // Calculate the angle in degrees
         int angle = (us - MIN_PULSE_WIDTH_US) * max_angle / (MAX_PULSE_WIDTH_US - MIN_PULSE_WIDTH_US);
@@ -539,7 +548,7 @@ namespace honeybee_utils {
     }
 
     // given an angle, calculate the pulse width in us to send to the servo
-    int servo_t::angle_to_us(int angle)
+    int hb_servo_t::angle_to_us(int angle)
     {
         // Calculate the pulse width in us
         int pulse_width = (angle * (MAX_PULSE_WIDTH_US - MIN_PULSE_WIDTH_US) / max_angle) + MIN_PULSE_WIDTH_US;
@@ -548,15 +557,15 @@ namespace honeybee_utils {
     }
 
     // get max angle
-    int servo_t::get_max_angle()
+    int hb_servo_t::get_max_angle()
     {
         return this->max_angle;
     }
 
-    void servo_t::init(int _max_angle)
+    void hb_servo_t::init(int _max_angle)
     {
         max_angle = _max_angle;
-        channel = (ledc_channel_t) honeybee::servo_count++;
+        channel = (ledc_channel_t) servo_count++;
         frequency = 50;
         resolution = LEDC_TIMER_14_BIT;
 
@@ -573,7 +582,7 @@ namespace honeybee_utils {
     }
 
     // establish pwm line to the servo
-    bool servo_t::attach(int _pin)
+    bool hb_servo_t::attach(int _pin)
     {
         pin = _pin;
         is_attached = true;
@@ -595,7 +604,7 @@ namespace honeybee_utils {
     };
 
     // write the angle in degrees to the servo
-    bool servo_t::write(int angle)
+    bool hb_servo_t::write(int angle)
     {
         if (!this->is_attached || !this->can_rotate)
             return false;
@@ -622,7 +631,7 @@ namespace honeybee_utils {
     };
 
     // write the pulse width in microseconds to the servo
-    bool servo_t::write_us(int us)
+    bool hb_servo_t::write_us(int us)
     {
         this->angle = us_to_angle(us);
 
@@ -640,24 +649,24 @@ namespace honeybee_utils {
     }
 
     // returns the angle in degrees of the servo in its current state
-    int servo_t::read()
+    int hb_servo_t::read()
     {
         return this->angle;
     }
 
     // returns the angle in microseconds with regards to the pwm width for the current angle
-    int servo_t::read_us()
+    int hb_servo_t::read_us()
     {
         return angle_to_us(this->angle);
     }
 
     // returns whether the servo is attached to a pin
-    bool servo_t::attached()
+    bool hb_servo_t::attached()
     {
         return this->is_attached;
     }
 
-    void servo_t::detach()
+    void hb_servo_t::detach()
     {
         this->is_attached = false;
         this->pin = -1;
@@ -665,14 +674,4 @@ namespace honeybee_utils {
         // stop the LEDC channel
         ledc_stop(LEDC_LOW_SPEED_MODE, channel, 0);
     }
-}
-
-namespace honeybee {
-    int num_i2c_connections = 0;
-    int num_uart_connections = 0;
-    int servo_count = 0;
-
-    honeybee_utils::hb_drone_state_t drone_state = honeybee_utils::DRONE_STATE_NONE;
-    honeybee_i2c::hb_i2c_cnctn_t i2c_connections[MAX_I2C_CONNECTIONS];
-    honeybee_uart::hb_uart_config_t uart_connections[MAX_UART_CONNECTIONS];
 }
