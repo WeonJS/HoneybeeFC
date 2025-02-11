@@ -42,33 +42,15 @@ namespace honeybee {
 
     extern hb_drone_state_t drone_state;
 
-    class hb_pid {
+    class hb_pid_t {
         public:
-            hb_pid(double Kp, double Ki, double Kd);
-
-            void setTunings(double Kp, double Ki, double Kd);
-            void setOutputLimits(double min, double max);
-            void setMode(bool mode);
-            void setSampleTime(int sampleTime);
-
-            double compute(double input, double setpoint);
-        
+            void init(double kp, double ki, double kd, double min, double max);
+            double calculate(double setpoint, double process_variable, double dt);
         private:
-            double _Kp;
-            double _Ki;
-            double _Kd;
+            double kp, ki, kd;
+            double setpoint, integral, prev_err;
+            double min, max;
 
-            double _min;
-            double _max;
-
-            bool _mode; // true = manual, false = automatic
-
-            int _sampleTime;
-
-            double _lastInput;
-            double _output;
-            double _integral;
-            unsigned long _lastTime;
     };
 
     class hb_servo_t
@@ -109,6 +91,10 @@ namespace honeybee {
 
 namespace honeybee_utils {
     
+}
+
+namespace honeybee_dma {
+
 }
 
 namespace honeybee_i2c {
@@ -186,7 +172,7 @@ namespace honeybee_i2c {
 namespace honeybee_uart {
     
 
-    struct hb_uart_config_t
+    typedef struct hb_uart_cnctn_s
     {
         int baud_rate;
         unsigned int rx_pin;
@@ -195,32 +181,58 @@ namespace honeybee_uart {
         unsigned int tx_buf_size;
 
         uart_port_t port;
-    };
+    } hb_uart_cnctn_t;
 
     extern int num_uart_connections;
-    extern hb_uart_config_t uart_connections[MAX_UART_CONNECTIONS];
+    extern hb_uart_cnctn_t uart_connections[MAX_UART_CONNECTIONS];
 
-    void uart_install_connection(hb_uart_config_t config);
+    void uart_install_cnctn(hb_uart_cnctn_t config);
 
-    int read_bytes(hb_uart_config_t config, uint8_t* buf, int len);
+    int read_bytes(hb_uart_cnctn_t config, uint8_t* buf, int len);
+}
+
+namespace honeybee_threading {
+
 }
 
 namespace honeybee_math {
     class hb_vector2_t {
         public:
-            void set_x(float x);
-            void set_y(float y);
-            float get_x();
-            float get_y();
-            float dot(hb_vector2_t other);
+            void set(double x, double y);
+            void set_x(double x);
+            void set_y(double y);
+            double get_x();
+            double get_y();
+            double dot(hb_vector2_t other);
+            double get_mag();
+            hb_vector2_t clamp_mag(double max);
             hb_vector2_t normal();
         private:
-            float x, y;
+            double x, y;
     };
 
-    float map(float value, float in_min, float in_max, float out_min, float out_max);
-    float clamp(float value, float min, float max);
-    float normalize(float value, float min, float max);
+    template <typename T>
+    T map(T x, T inMin, T inMax, T outMin, T outMax)
+    {
+        // To protect against division by zero if inMin == inMax
+        if (inMin == inMax) {
+            // Edge case: if input range is 0, return outMin or handle differently
+            return outMin;
+        }
+
+        // Calculate the ratio of how far x is between inMin and inMax
+        T ratio = (x - inMin) / (inMax - inMin);
+
+        // Map that ratio to the output range
+        return outMin + ratio * (outMax - outMin);
+    }
+
+    template <typename T>
+    T clamp(T value, T min, T max) {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
 }
 
 
@@ -294,9 +306,9 @@ namespace honeybee_dshot {
     {
         public:
 
-            bool init(gpio_num_t gpio_num, dshot_mode_t dshot_mode = DSHOT_OFF, bool is_bidirectional = false, int startup_delay_ms = 3000);
+            bool init(gpio_num_t gpio_num, dshot_mode_t dshot_mode = DSHOT_OFF, bool is_bidirectional = false, int startup_delay_ms = 1000);
 
-            void send_throttle(uint16_t throttle_value);
+            void send_throttle(int16_t throttle_value);
 
             void remove();
 
@@ -363,5 +375,5 @@ namespace honeybee_crsf {
     };
     
     honeybee::hb_err_t process_crsf_frame(uint8_t *data, int buf_size, int si, hb_crsf_rc_channel_data_t &channels);
-    honeybee::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_cnctn, hb_crsf_rc_channel_data_t &channels);
+    honeybee::hb_err_t update_rc_channels(honeybee_uart::hb_uart_cnctn_t uart_cnctn, hb_crsf_rc_channel_data_t &channels);
 }

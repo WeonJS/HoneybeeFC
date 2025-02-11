@@ -86,13 +86,13 @@ namespace honeybee_i2c {
 
 namespace honeybee_uart {
     int num_uart_connections = 0;
-    honeybee_uart::hb_uart_config_t uart_connections[MAX_UART_CONNECTIONS];
+    honeybee_uart::hb_uart_cnctn_t uart_connections[MAX_UART_CONNECTIONS];
 
-    void uart_install_connection(hb_uart_config_t config) //uart_port_t port, int rx_pin, int tx_pin, int tx_buf_size, int rx_buf_size, int baud_rate
+    void uart_install_cnctn(hb_uart_cnctn_t cnctn) //uart_port_t port, int rx_pin, int tx_pin, int tx_buf_size, int rx_buf_size, int baud_rate
     {
         // Initialize the UART peripheral config
         uart_config_t uart_config = {
-            .baud_rate = config.baud_rate,
+            .baud_rate = cnctn.baud_rate,
             .data_bits = UART_DATA_8_BITS,
             .parity = UART_PARITY_DISABLE,
             .stop_bits = UART_STOP_BITS_1,
@@ -103,35 +103,35 @@ namespace honeybee_uart {
         };
 
         // Install the UART driver
-        ESP_ERROR_CHECK(uart_driver_install(config.port, config.rx_buf_size, config.tx_buf_size, 0, NULL, 0));
-        ESP_ERROR_CHECK(uart_param_config(config.port, &uart_config));
-        ESP_ERROR_CHECK(uart_set_pin(config.port, config.tx_pin, config.rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+        ESP_ERROR_CHECK(uart_driver_install(cnctn.port, cnctn.rx_buf_size, cnctn.tx_buf_size, 0, NULL, 0));
+        ESP_ERROR_CHECK(uart_param_config(cnctn.port, &uart_config));
+        ESP_ERROR_CHECK(uart_set_pin(cnctn.port, cnctn.tx_pin, cnctn.rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     }
 
-    int read_bytes(hb_uart_config_t config, uint8_t* buf, int len)
+    int read_bytes(hb_uart_cnctn_t config, uint8_t* buf, int len)
     {
-        return uart_read_bytes(config.port, buf, len, pdMS_TO_TICKS(20));
+        return uart_read_bytes(config.port, buf, len, 0);
     }
 }
 
 namespace honeybee_math {
     
-    void hb_vector2_t::set_x(float x)
+    void hb_vector2_t::set_x(double x)
     {
         this->x = x;
     }
 
-    void hb_vector2_t::set_y(float y)
+    void hb_vector2_t::set_y(double y)
     {
         this->y = y;
     }
 
-    float hb_vector2_t::get_x()
+    double hb_vector2_t::get_x()
     {
         return this->x;
     }
 
-    float hb_vector2_t::get_y()
+    double hb_vector2_t::get_y()
     {
         return this->y;
     }
@@ -152,7 +152,7 @@ namespace honeybee_math {
         return ret;
     }
 
-    hb_vector2_t operator*(hb_vector2_t a, float b)
+    hb_vector2_t operator*(hb_vector2_t a, double b)
     {
         hb_vector2_t ret;
         ret.set_x(a.get_x() * b);
@@ -160,7 +160,7 @@ namespace honeybee_math {
         return ret;
     }
 
-    hb_vector2_t operator*(float a, hb_vector2_t b)
+    hb_vector2_t operator*(double a, hb_vector2_t b)
     {
         hb_vector2_t ret;
         ret.set_x(a * b.get_x());
@@ -168,7 +168,7 @@ namespace honeybee_math {
         return ret;
     }
 
-    hb_vector2_t operator/(hb_vector2_t a, float b)
+    hb_vector2_t operator/(hb_vector2_t a, double b)
     {
         hb_vector2_t ret;
         ret.set_x(a.get_x() / b);
@@ -177,35 +177,40 @@ namespace honeybee_math {
     }
 
     // todo: map function for floats
-    float map(float value, float in_min, float in_max, float out_min, float out_max)
+    
+
+    void hb_vector2_t::set(double x, double y)
     {
-        float val = (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-        return clamp(val, out_min, out_max);
+        this->x = x;
+        this->y = y;
     }
 
-    float clamp(float value, float min, float max)
+    double hb_vector2_t::get_mag()
     {
-        if (value < min)
-            value = min;
-        if (value > max)
-            value = max;
-
-        return value;
+        return sqrt(this->x * this->x + this->y * this->y);
     }
 
-    float hb_vector2_t::dot(hb_vector2_t other)
+
+    double hb_vector2_t::dot(hb_vector2_t other)
     {
         return x * other.get_x() + y * other.get_y();
     }
 
-    float normalize(float value, float min, float max)
+    hb_vector2_t hb_vector2_t::clamp_mag(double max)
     {
-        return (value - min) / (max - min);
+        double magnitude = get_mag();
+        if (magnitude > max) {
+            hb_vector2_t ret;
+            ret.set_x(this->x / magnitude * max);
+            ret.set_y(this->y / magnitude * max);
+            return ret;
+        }
+        return *this;
     }
 
     hb_vector2_t hb_vector2_t::normal()
     {
-        float magnitude = sqrt(this->x * this->x + this->y * this->y);
+        double magnitude = sqrt(this->x * this->x + this->y * this->y);
         hb_vector2_t ret;
         ret.set_x(this->x / magnitude);
         ret.set_y(this->y / magnitude);
@@ -395,20 +400,20 @@ namespace honeybee_dshot {
             .telemetry_req = false, // telemetry is not supported in this example
         };
 
-        // ESP_LOGI(dshot_TAG, "Start ESC by sending zero throttle for a while...");
-        // ESP_ERROR_CHECK(rmt_transmit(esc_chan, dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-        // vTaskDelay(pdMS_TO_TICKS(startup_delay_ms));
+        ESP_LOGI(dshot_TAG, "Start ESC by sending zero throttle for a while...");
+        ESP_ERROR_CHECK(rmt_transmit(esc_chan, dshot_encoder, &throttle, sizeof(throttle), &tx_config));
+        vTaskDelay(pdMS_TO_TICKS(startup_delay_ms));
 
         return true;
 
     }
 
-    void dshot_cnctn_t::send_throttle(uint16_t throttle_value)
+    void dshot_cnctn_t::send_throttle(int16_t throttle_value)
     {
-        throttle_value = (uint16_t) honeybee_math::clamp(throttle_value, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
+        uint16_t final_throttle = honeybee_math::clamp<int16_t>(throttle_value, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
 
         dshot_esc_throttle_t throttle = {
-            .throttle = throttle_value,
+            .throttle = final_throttle,
             .telemetry_req = false, // telemetry is not supported in this example
         };
 
@@ -479,33 +484,35 @@ namespace honeybee_crsf {
                 channels.chan3 = (data[si + 8] << 7) | (data[si + 7] >> 1); // yaw
                 channels.chan4 = (data[si + 9] << 4) | (data[si + 8] >> 4); // button SA
                 
-                for (int i = 0; i < frame_length + 2; i++)
-                {
-                    // printf("%02X ", data[si + i]);
-                }
-                // printf("\n");
+                // for (int i = 0; i < frame_length + 2; i++)
+                // {
+                //     ESP_LOGI("crsf","%02X ", data[si + i]);
+                // }
+                // ESP_LOGI("crsf","\n");
                 // printf("chan1: %d\n", channels.chan1);
                 // printf("chan2: %d\n", channels.chan4);
 
                 break;
             default:
+                // ESP_LOGE("CRSF", "Unknown CRSF frame type: %d", data[si + 2]);
                 return honeybee::HONEYBEE_ERR;
         }
 
         return honeybee::HONEYBEE_OK;
     }
 
-    honeybee::hb_err_t update_rc_channels(honeybee_uart::hb_uart_config_t uart_config, honeybee_crsf::hb_crsf_rc_channel_data_t &channels)
+    honeybee::hb_err_t update_rc_channels(honeybee_uart::hb_uart_cnctn_t uart_cnctn, honeybee_crsf::hb_crsf_rc_channel_data_t &channels)
     {
-        unsigned int rx_buf_size = uart_config.rx_buf_size;
-        uint8_t data[rx_buf_size];
+        uint8_t bytes_read = 64;
+        uint8_t data[bytes_read];
 
-        int byte_count = honeybee_uart::read_bytes(uart_config, data, rx_buf_size);
+        int byte_count = honeybee_uart::read_bytes(uart_cnctn, data, bytes_read);
 
         for (int i = 0; i < byte_count; i++)
         {
+            // printf("%02X ", data[i]);
             // attempt to process the frame and update the channels
-            honeybee::hb_err_t ret = process_crsf_frame(data, rx_buf_size, i, channels);
+            honeybee::hb_err_t ret = process_crsf_frame(data, bytes_read, i, channels);
 
             // if the frame was processed successfully, skip to the next frame
             if (ret == honeybee::HONEYBEE_OK)
@@ -516,9 +523,10 @@ namespace honeybee_crsf {
             else
             {
                 // if the frame was not processed successfully, log an error
-                // ESP_LOGE(ELRSReceiver_TAG, "Error processing CRSF frame: %d", ret);
+                // ESP_LOGE("crsf", "Error processing CRSF frame: %d", ret);
             }
         }
+        // printf("\n");
 
         return honeybee::HONEYBEE_OK;
     }
@@ -531,6 +539,35 @@ namespace honeybee_utils {
 namespace honeybee {
     honeybee::hb_drone_state_t drone_state = honeybee::DRONE_STATE_NONE;
     int hb_servo_t::servo_count = 0;
+
+    void hb_pid_t::init(double kp, double ki, double kd, double min, double max)
+    {
+        this->kp = kp;
+        this->ki = ki;
+        this->kd = kd;
+        this->min = min;
+        this->max = max;
+        this->integral = 0;
+        this->prev_err = 0;
+    }
+
+    double hb_pid_t::calculate(double setpoint, double process_variable, double dt)
+    {
+        double error = setpoint - process_variable;
+        double p = kp * error;
+
+        integral += error * dt;
+        double i = ki * integral;
+
+        double derivative = (error - prev_err) / dt;
+        double d = kd * derivative;
+
+        double output = honeybee_math::clamp<double>(p + i + d, min, max);
+
+        prev_err = error;
+
+        return output;
+    }
     
     honeybee::hb_err_t hb_servo_t::set_can_rotate(bool can_rotate)
     {
@@ -610,7 +647,7 @@ namespace honeybee {
             return false;
 
         // clamp the angle to be written to within the max angle
-        angle = honeybee_math::clamp(angle, 0, max_angle);
+        angle = honeybee_math::clamp<int>(angle, 0, max_angle);
 
         // update class field
         this->angle = angle;
@@ -635,7 +672,7 @@ namespace honeybee {
     {
         this->angle = us_to_angle(us);
 
-        float pulse_width_normalized = honeybee_math::normalize(us, MIN_PULSE_WIDTH_US, MAX_PULSE_WIDTH_US);
+        float pulse_width_normalized = honeybee_math::map(us, MIN_PULSE_WIDTH_US, MAX_PULSE_WIDTH_US, 0, 1);
 
         // calculate the duty cycle using normalized pulse width
         int duty = pulse_width_normalized * (1 << (int)resolution);

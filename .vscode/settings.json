@@ -30,6 +30,8 @@
         "complex": "cpp",
         "fstream": "cpp",
         "istream": "cpp",
-        "sstream": "cpp"
+        "sstream": "cpp",
+        "chrono": "cpp",
+        "functional": "cpp"
     }
 }
