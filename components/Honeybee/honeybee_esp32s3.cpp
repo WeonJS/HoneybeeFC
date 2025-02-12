@@ -152,27 +152,19 @@ namespace honeybee_math {
         return ret;
     }
 
-    hb_vector2_t operator*(hb_vector2_t a, double b)
+    hb_vector2_t hb_vector2_t::operator*(double b)
     {
         hb_vector2_t ret;
-        ret.set_x(a.get_x() * b);
-        ret.set_y(a.get_y() * b);
+        ret.set_x(get_x() * b);
+        ret.set_y(get_y() * b);
         return ret;
     }
 
-    hb_vector2_t operator*(double a, hb_vector2_t b)
+    hb_vector2_t hb_vector2_t::operator/(double b)
     {
         hb_vector2_t ret;
-        ret.set_x(a * b.get_x());
-        ret.set_y(a * b.get_y());
-        return ret;
-    }
-
-    hb_vector2_t operator/(hb_vector2_t a, double b)
-    {
-        hb_vector2_t ret;
-        ret.set_x(a.get_x() / b);
-        ret.set_y(a.get_y() / b);
+        ret.set_x(get_x() / b);
+        ret.set_y(get_y() / b);
         return ret;
     }
 

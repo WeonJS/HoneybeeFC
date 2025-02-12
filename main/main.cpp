@@ -250,10 +250,11 @@ void ICM20948::update_axes() {
     double gyro_y_dps = (double) gyro_y_raw / GYRO_SCALE_FACTOR_2000DPS;
     double gyro_z_dps = (double) gyro_z_raw / GYRO_SCALE_FACTOR_2000DPS;
 
-    // apply offsets for calibration
-    gyro_x_dps -= 0.6;
-    gyro_y_dps -= 0.25;
-    gyro_z_dps -= 0.3;
+    gyro_x_dps -= 0.548089641;
+    gyro_y_dps -= 0.318002495;
+    gyro_z_dps -= 0.376529038;
+
+    // printf("%f,%f,%f\n", gyro_x_dps, gyro_y_dps, gyro_z_dps);
 
     // accel
     reg_start = ACCEL_XOUT_H;
@@ -268,10 +269,9 @@ void ICM20948::update_axes() {
     double accel_y_g = (double) accel_y_raw / ACCEL_SCALE_FACTOR_16G;
     double accel_z_g = (double) accel_z_raw / ACCEL_SCALE_FACTOR_16G;
 
-    // apply offsets for calibration
-    accel_x_g -= 0.05;
-    accel_y_g += 0.027;
-    accel_z_g -= 0.01;
+    accel_x_g -= -0.005548839;
+    accel_y_g -= -0.037404097;
+    accel_y_g -= -0.022087247;
 
     // NOTE FOR ACCEL: the +x axis is indicating that when a force is applied in the +x direction, the acceleration is positive.
     // flipping these raw axes because my imu is facing downwards and i want to treat it as facing upwards.
@@ -362,7 +362,7 @@ void ICM20948::update_axes() {
     honeybee_i2c::hb_i2c_master_write_read(&device_mag, &st2, 1, &status_bit, 1);
 
     double dt = get_delta_time_s();
-    double alpha = 0.5;
+    double alpha = 0.98;
 
     pitch_cf = alpha * (pitch_cf + gyro_y_dps * dt) + (1 - alpha) * pitch_acc;
     roll_cf = alpha * (roll_cf + gyro_x_dps * dt) + (1 - alpha) * roll_acc;
@@ -491,10 +491,10 @@ extern "C" void app_main(void)
     );
 
     honeybee::hb_pid_t pitch_pid;
-    pitch_pid.init(4, 0.05, 2, -1024, 1024);
+    pitch_pid.init(6, 0.02, 1, -1024, 1024);
 
     honeybee::hb_pid_t roll_pid;
-    roll_pid.init(4, 0.05, 2, -1024, 1024);
+    roll_pid.init(6, 0.02, 1, -1024, 1024);
 
     honeybee::hb_pid_t yaw_pid;
     yaw_pid.init(3, 0.01, 1, -1024, 1024);
@@ -507,70 +507,71 @@ extern "C" void app_main(void)
         double roll_input = get_roll(-1, 1);
         double throttle_input = get_throttle();
         double yaw_input = get_yaw(-1, 1);
-
-        honeybee_math::hb_vector2_t RJ_input;
-        RJ_input.set(roll_input, pitch_input);
-        RJ_input = RJ_input.clamp_mag(1);
-
-        // honeybee_math::hb_vector2_t LJ_input;
-        // LJ_input.set(yaw_input, throttle_input);
-        // LJ_input = LJ_input.clamp_mag(1);
-        // printf("roll: %f, pitch: %f\n", roll_input, pitch_input);
-
-        // printf("lj: %f, %f\n", LJ_input.get_x(), LJ_input.get_y());
-        // printf("rj: %f, %f\n", RJ_input.get_x(), RJ_input.get_y());
-
-        // printf("Pitch: %f\tRoll: %f\tThrottle: %d\n", get_pitch(), get_roll(), dshot_throttle);
-        // printf("Pitch: %d\tRoll: %d\tThrottle: %d\n", pitch_input, roll_input, dshot_throttle);
-
-        honeybee_math::hb_vector2_t input_pos_FL;
-        input_pos_FL.set(1, -1);
-        input_pos_FL = input_pos_FL.normal();
-
-        honeybee_math::hb_vector2_t input_pos_FR;
-        input_pos_FR.set(-1, -1);
-        input_pos_FR = input_pos_FR.normal();
-
-        honeybee_math::hb_vector2_t input_pos_BL;
-        input_pos_BL.set(1, 1);
-        input_pos_BL = input_pos_BL.normal();
-
-        honeybee_math::hb_vector2_t input_pos_BR;
-        input_pos_BR.set(-1, 1);
-        input_pos_BR = input_pos_BR.normal();
+        
+        if (abs(pitch_input - 0.5) < 0.1) pitch_input = 0.5;
+        if (abs(roll_input - 0.5) < 0.1) roll_input = 0.5;
 
         int dshot_throttle = honeybee_math::map<double>(throttle_input, 0, 1, DSHOT_THROTTLE_MIN, DSHOT_THROTTLE_MAX);
 
-        double FL_control = input_pos_FL.dot(RJ_input);
-        double FR_control = input_pos_FR.dot(RJ_input);
-        double BL_control = input_pos_BL.dot(RJ_input);
-        double BR_control = input_pos_BR.dot(RJ_input);
+        int16_t max_pid_throttle_authority = 1024;
+        double max_pitch_input_angle = 15;
+        double max_roll_input_angle = 15;
+        double pitch_input_angle = honeybee_math::map<double>(pitch_input, -1, 1, -max_pitch_input_angle, max_pitch_input_angle);
+        double roll_input_angle = honeybee_math::map<double>(roll_input, -1, 1, -max_roll_input_angle, max_roll_input_angle);
 
-        // printf("FL: %f\tFR: %f\tBL: %f\tBR: %f\n", FL_control, FR_control, BL_control, BR_control);
-        
-        int16_t max_control_thrust = 300;
-        int16_t dshot_throttle_FL = (int16_t) honeybee_math::map<double>(FL_control, -1, 1, -max_control_thrust, max_control_thrust) + dshot_throttle;
-        int16_t dshot_throttle_FR = (int16_t) honeybee_math::map<double>(FR_control, -1, 1, -max_control_thrust, max_control_thrust) + dshot_throttle;
-        int16_t dshot_throttle_BL = (int16_t) honeybee_math::map<double>(BL_control, -1, 1, -max_control_thrust, max_control_thrust) + dshot_throttle;
-        int16_t dshot_throttle_BR = (int16_t) honeybee_math::map<double>(BR_control, -1, 1, -max_control_thrust, max_control_thrust) + dshot_throttle;
+        honeybee_math::hb_vector2_t pid_pos_FL;
+        pid_pos_FL.set(1, -1);
+        pid_pos_FL = pid_pos_FL.normal();
 
-        printf("FL: %d\tFR: %d\tBL: %d\tBR: %d\n", dshot_throttle_FL, dshot_throttle_FR, dshot_throttle_BL, dshot_throttle_BR);
+        honeybee_math::hb_vector2_t pid_pos_FR;
+        pid_pos_FR.set(-1, -1);
+        pid_pos_FR = pid_pos_FR.normal();
+
+        honeybee_math::hb_vector2_t pid_pos_BL;
+        pid_pos_BL.set(1, 1);
+        pid_pos_BL = pid_pos_BL.normal();
+
+        honeybee_math::hb_vector2_t pid_pos_BR;
+        pid_pos_BR.set(-1, 1);
+        pid_pos_BR = pid_pos_BR.normal();
 
         imu_rot_data_t imu_rot_data;
         if(xQueueReceive(icm.imu_rot_data_queue, &imu_rot_data, 0) == pdPASS) {
             // printf("Cal: %f, %f, %f\n", imu_rot_data.pitch_cf, imu_rot_data.roll_cf, imu_rot_data.yaw_cf);
         }
 
-        double pitch_val = pitch_pid.calculate(0, imu_rot_data.pitch_cf, get_delta_time_s());
-        double roll_val = roll_pid.calculate(0, imu_rot_data.roll_cf, get_delta_time_s());
-        double yaw_val = yaw_pid.calculate(45, imu_rot_data.yaw_cf, get_delta_time_s());
-        // printf("Pitch: %f\t Roll: %f\t Yaw: %f\n", pitch_val, roll_val, yaw_val);
+        double pid_max = 200;
+        double pitch_pid_output = pitch_pid.calculate(pitch_input_angle, imu_rot_data.pitch_cf, get_delta_time_s());
+        pitch_pid_output = honeybee_math::map<double>(pitch_pid_output, -pid_max, pid_max, -1, 1); // change 1024 to something else
+
+        double roll_pid_output = roll_pid.calculate(roll_input_angle, imu_rot_data.roll_cf, get_delta_time_s());
+        roll_pid_output = honeybee_math::map<double>(roll_pid_output, -pid_max, pid_max, -1, 1); // change 1024 to something else
+
+        double yaw_pid_output = yaw_pid.calculate(45, imu_rot_data.yaw_cf, get_delta_time_s());
+        yaw_pid_output = honeybee_math::map<double>(yaw_pid_output, -pid_max, pid_max, -1, 1); // change 1024 to something else
+
+        // printf("Pitch: %.3f\t\t\tRoll: %.3f\t\t\tYaw: %.3f\n", pitch_pid_output, roll_pid_output, yaw_pid_output);
+
+        honeybee_math::hb_vector2_t pitch_roll_pid_output;
+        pitch_roll_pid_output.set(roll_pid_output, pitch_pid_output);
+        pitch_roll_pid_output = pitch_roll_pid_output.clamp_mag(1);
+
+        int16_t pid_throttle_FL = (int16_t) (pitch_roll_pid_output.dot(pid_pos_FL) * max_pid_throttle_authority);
+        int16_t pid_throttle_FR = (int16_t) (pitch_roll_pid_output.dot(pid_pos_FR) * max_pid_throttle_authority);
+        int16_t pid_throttle_BL = (int16_t) (pitch_roll_pid_output.dot(pid_pos_BL) * max_pid_throttle_authority);
+        int16_t pid_throttle_BR = (int16_t) (pitch_roll_pid_output.dot(pid_pos_BR) * max_pid_throttle_authority);
+
+        printf("bl thrust: %d\tfl thrust: %d\tbr thrust: %d\tfr thrust: %d\n", pid_throttle_BL, pid_throttle_FL, pid_throttle_BR, pid_throttle_FR);
+
+        int16_t dshot_throttle_FL = pid_throttle_FL + dshot_throttle;
+        int16_t dshot_throttle_FR = pid_throttle_FR + dshot_throttle;
+        int16_t dshot_throttle_BL = pid_throttle_BL + dshot_throttle;
+        int16_t dshot_throttle_BR = pid_throttle_BR + dshot_throttle;
 
         // printf("bl thrust: %d\tfl thrust: %d\tbr thrust: %d\tfr thrust: %d\n", dshot_throttle_BL, dshot_throttle_FL, dshot_throttle_BR, dshot_throttle_FR);
 
         vTaskDelay(pdMS_TO_TICKS(1));
 
-        // todo: print pitch roll yaw
         // ESP_LOGI(main_TAG, "Pitch: %f\tRoll: %f\tYaw: %f", pitch, roll, yaw);
         // printf("Cal:%f,%f,%f,%f,%f,%f,%f\n",
         //     icm.accel_x_g, icm.accel_y_g, icm.accel_z_g,  // next three: accelerometer
@@ -612,8 +613,8 @@ extern "C" void app_main(void)
                 BL_servo.set_can_rotate(true);
                 BR_servo.set_can_rotate(true);
 
-                FL_servo.write(pitch_input + roll_input);
-                FR_servo.write(pitch_input + roll_input);
+                FL_servo.write(pitch_input * 180 - roll_input * 180);
+                FR_servo.write(pitch_input * 180 + roll_input * 180);
                 BL_servo.write(90);
                 BR_servo.write(90);
                 // CamTiltServo.write(get_roll() * 180);
@@ -631,7 +632,7 @@ extern "C" void app_main(void)
         loops++;
         uint64_t now = esp_timer_get_time();
         if (now - last_time >= 1000000) { // 1 second elapsed
-            printf("Loop count: %d loops per second\n", loops);
+            // printf("Loop count: %d loops per second\n", loops);
             loops = 0; // Reset counter
             last_time = now;
         }

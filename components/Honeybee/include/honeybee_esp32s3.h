@@ -205,11 +205,20 @@ namespace honeybee_math {
             double get_y();
             double dot(hb_vector2_t other);
             double get_mag();
+            hb_vector2_t operator*(double b);
+            hb_vector2_t operator/(double b);
             hb_vector2_t clamp_mag(double max);
             hb_vector2_t normal();
         private:
             double x, y;
     };
+
+    template <typename T>
+    T clamp(T value, T min, T max) {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
 
     template <typename T>
     T map(T x, T inMin, T inMax, T outMin, T outMax)
@@ -224,15 +233,11 @@ namespace honeybee_math {
         T ratio = (x - inMin) / (inMax - inMin);
 
         // Map that ratio to the output range
-        return outMin + ratio * (outMax - outMin);
+        T mapped_val = outMin + ratio * (outMax - outMin);
+        return clamp<T>(mapped_val, outMin, outMax);
     }
 
-    template <typename T>
-    T clamp(T value, T min, T max) {
-        if (value < min) return min;
-        if (value > max) return max;
-        return value;
-    }
+    
 }
 
 
