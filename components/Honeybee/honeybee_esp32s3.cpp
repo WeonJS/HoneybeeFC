@@ -419,14 +419,14 @@ namespace honeybee_dshot {
 
     uint16_t dshot_cnctn_t::serialize_packet(const dshot_packet_t &dshot_packet)
     {
-        uint16_t parsedRmtPaket = DSHOT_NULL_PACKET;
+        uint16_t parsedRmtPacket = DSHOT_NULL_PACKET;
         uint16_t crc = calculateCRC(dshot_packet);
 
         // Complete the packet
-        parsedRmtPaket = (dshot_packet.throttle_value << 1) | dshot_packet.telemetric_request;
-        parsedRmtPaket = (parsedRmtPaket << 4) | crc;
+        parsedRmtPacket = (dshot_packet.throttle_value << 1) | dshot_packet.telemetric_request;
+        parsedRmtPacket = (parsedRmtPacket << 4) | crc;
 
-        return parsedRmtPaket;
+        return parsedRmtPacket;
     }
 }
 

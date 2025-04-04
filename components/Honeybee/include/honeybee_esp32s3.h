@@ -236,8 +236,14 @@ namespace honeybee_math {
         T mapped_val = outMin + ratio * (outMax - outMin);
         return clamp<T>(mapped_val, outMin, outMax);
     }
+}
 
-    
+namespace honeybee_imu {
+    class hb_imu_t {
+        public:
+            void write_reg(uint8_t reg_addr, uint8_t* data);
+            void read_reg(uint8_t reg_addr, uint8_t* data);
+    };
 }
 
 
